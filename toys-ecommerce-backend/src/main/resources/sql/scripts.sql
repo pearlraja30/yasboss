@@ -1,3 +1,15 @@
+-- Admin User Insertion
+INSERT INTO users (full_name, email, password, phone, role) 
+VALUES 
+(
+    'YasBoss Admin', 
+    'admin@yasboss.com', 
+    '$2a$10$85yAp23hPMulc7Ahq0Gp4eiddJh6su2B1Dk1CHKHIi/d3lUdtBKpq', 
+    '9000000000', 
+    'ADMIN'
+);
+
+
 -- Updated: Removed age_range column
 INSERT INTO quiz_questions (question_text, option_a, option_b, option_c, option_d, correct_option, points, category) VALUES
 ('What color do you get when you mix Red and Blue?', 'Green', 'Orange', 'Purple', 'Yellow', 2, 10, 'Educational'),
