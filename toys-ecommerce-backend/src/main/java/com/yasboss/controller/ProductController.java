@@ -37,67 +37,26 @@ public class ProductController {
     @Autowired
     private ProductService productService;
 
-    @GetMapping
+    // ✨ UPDATED: Explicitly named /filter to match frontend api.ts call
+    // This MUST stay above the /{id} mapping to avoid type mismatch errors
+    @GetMapping("/filter")
     public List<Product> getProducts(
         @RequestParam(required = false) String category,
         @RequestParam(required = false) String age,
         @RequestParam(required = false) String search
     ) {
-        log.info("Filtering products with category: {} and age: {} and searhc: {{}", category,  age, search);
-        // Logic to filter products in DB based on category or age
+        log.info("Filtering products with category: {}, age: {}, search: {}", category, age, search);
         return productService.getFilteredProducts(category, age, search);
     }
 
-    // Endpoint: GET /api/products/featured
     @GetMapping("/features")
     public List<Product> getFeaturedProducts() {
         return productService.getFeaturedProducts();
     }
 
-    @GetMapping("/collection/{ageRoute}")
-    public List<Product> getProductsByCollection(@PathVariable String ageRoute) {
-        // 1. Convert the route slug (e.g., "0-2-years") back to the database format (e.g., "0 - 2 Years")
-       log.info("Fetching products for age route: {}", ageRoute);
-        String formattedAgeRange = ageRoute
-                .replace("-years", " Years")
-                .replace("-plus", "+")
-                .replace('-', ' '); 
-        
-        // Handle the specific cases for the age ranges defined in the frontend mock:
-        // "0-2-years" -> "0 - 2 Years"
-        // "6-plus-years" -> "6 + Years"
-        
-        // 2. Query the repository
-       log.info("After format age route: {}", formattedAgeRange);
-        return productService.getFindByAgeRangeIgnoreCase(ageRoute);
-    }
-
-
-    // NEW Category Filter endpoint
-    @GetMapping("/category/{categoryName}")
-    public ResponseEntity<List<Product>> getProductsByCategory(@PathVariable String categoryName) {
-        log.info("Fetching products for category: {}", categoryName);
-        List<Product> products = productService.getProductsByCategory(categoryName);
-        return ResponseEntity.ok(products);
-    }
-
     @GetMapping("/all")
     public List<Product> getAll() {
-        // Returns the list of products as a JSON array
         return productService.getAllProducts();
-    }
-    
-    @GetMapping("/{id}")
-    public ResponseEntity<Product> getProductById(@PathVariable Long id) {
-        return productService.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    } 
-
-    @GetMapping("/age/{ageRange}")
-    public List<Product> getProductsByAge(@PathVariable String ageRange) {
-        log.info("Fetching products for age range: {}", ageRange);
-        return productService.findByAgeRangeIgnoreCase(ageRange);
     }
 
     @GetMapping("/search")
@@ -105,9 +64,36 @@ public class ProductController {
         return productService.findByNameContainingIgnoreCase(query);
     }
 
+    @GetMapping("/category/{categoryName}")
+    public ResponseEntity<List<Product>> getProductsByCategory(@PathVariable String categoryName) {
+        log.info("Fetching products for category: {}", categoryName);
+        List<Product> products = productService.getProductsByCategory(categoryName);
+        return ResponseEntity.ok(products);
+    }
+
+    @GetMapping("/age/{ageRange}")
+    public List<Product> getProductsByAge(@PathVariable String ageRange) {
+        log.info("Fetching products for age range: {}", ageRange);
+        return productService.findByAgeRangeIgnoreCase(ageRange);
+    }
+
+    @GetMapping("/low-stock")
+    public ResponseEntity<List<Product>> getLowStockItems(@RequestParam(defaultValue = "5") int threshold) {
+        List<Product> lowStock = productService.findByStockLessThan(threshold);
+        return ResponseEntity.ok(lowStock);
+    }
+
+    // 🔒 MOVED: Dynamic ID paths must be at the bottom
+    // This prevents "filter" or "all" from being treated as a numeric ID
+    @GetMapping("/{id}")
+    public ResponseEntity<Product> getProductById(@PathVariable Long id) {
+        return productService.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    } 
+
     @PostMapping("/add")
     public ResponseEntity<Product> addProduct(@RequestBody Product product) {
-        // This saves the product sent from your React Admin UI into PostgreSQL
         Product savedProduct = productService.saveProduct(product);
         return new ResponseEntity<>(savedProduct, HttpStatus.CREATED);
     }
@@ -125,7 +111,6 @@ public class ProductController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
-    // Delete a toy from inventory
     @DeleteMapping("/delete/{id}")
     public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
         productService.deleteProduct(id);
@@ -135,26 +120,13 @@ public class ProductController {
     @PostMapping("/upload-image")
     public ResponseEntity<Map<String, String>> uploadImage(@RequestParam("file") MultipartFile file) {
         try {
-            // Define directory: src/main/resources/static/uploads/
             String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
             Path uploadPath = Paths.get("target/classes/static/uploads/"); 
-            
             if (!Files.exists(uploadPath)) Files.createDirectories(uploadPath);
-            
             Files.copy(file.getInputStream(), uploadPath.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
-            
             return ResponseEntity.ok(Map.of("url", "http://localhost:8080/uploads/" + fileName));
         } catch (IOException e) {
             return ResponseEntity.status(500).body(Map.of("error", "Upload failed"));
         }
     }
-
-    @GetMapping("/low-stock")
-    public ResponseEntity<List<Product>> getLowStockItems(@RequestParam(defaultValue = "5") int threshold) {
-        // This naming matches your Repository method
-        List<Product> lowStock = productService.findByStockLessThan(threshold);
-        return ResponseEntity.ok(lowStock);
-    }
-
 }
-

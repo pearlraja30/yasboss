@@ -4,6 +4,7 @@ import java.util.Arrays;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -51,13 +52,15 @@ public class SecurityConfig {
                 // Public Endpoints
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/products/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                 .requestMatchers("/api/categories/**").permitAll()
                 // Protected Endpoints
                 .requestMatchers("/api/quiz/**", "/api/rewards/**").authenticated()
                 .requestMatchers("/api/orders/**").authenticated()
                 .requestMatchers("/api/users/profile/**").authenticated()
-                .requestMatchers("/api/cart/add/**", "/api/cart/update-quantity/**", "/api/cart/item/**").authenticated()
+                .requestMatchers("/api/cart/**").authenticated()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/rewards/**").authenticated()
                 .anyRequest().authenticated()
             )
             // Add your custom JWT filter before the standard authentication filter
