@@ -58,6 +58,7 @@ public class SecurityConfig {
 
                 // This fixes the 403 errors on age-0-2.jpg, etc.
                 .requestMatchers("/uploads/**", "/images/**", "/static/**").permitAll()
+                .requestMatchers("/process-payment").permitAll()
 
                 // Protected Endpoints
                 .requestMatchers("/api/quiz/**", "/api/rewards/**").authenticated()

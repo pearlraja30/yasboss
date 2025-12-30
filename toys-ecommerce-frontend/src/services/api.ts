@@ -161,6 +161,10 @@ export const orderService = {
     createOrder: async (orderData: any) => {
     const response = await apiClient.post('/orders/checkout', orderData);
     return response.data;
+    },
+    processPayment: async (paymentData: any) => {
+    const response = await apiClient.post('/process-payment', paymentData);
+    return response.data;
     }
 };
 

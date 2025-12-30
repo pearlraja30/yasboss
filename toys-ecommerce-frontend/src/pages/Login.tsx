@@ -25,55 +25,55 @@ const Login: React.FC = () => {
         setLoading(true);
 
         try {
-            // 1. Prepare Payload correctly based on mode
             const authData = isLogin 
                 ? { email: formData.email.trim(), password: formData.password }
                 : { ...formData, email: formData.email.trim() };
 
-            // 2. Execute Auth
             const response = isLogin 
                 ? await authService.login(authData) 
                 : await authService.register(authData);
             
             if (response && response.token) {
-                // 3. ✨ CRITICAL FIX: Save Token AND Email separately
-                // OrderHistory.tsx requires 'userEmail' to avoid redirecting to login.
+                // ✨ STEP 1: Immediate Storage Lock
+                // We save these BEFORE calling any other service to ensure 
+                // the API Interceptor has the token for the Profile call.
                 localStorage.setItem('jwtToken', response.token);
                 localStorage.setItem('userEmail', formData.email.trim());
                 
-                // 4. ✨ The Sync Fix: Await the profile fetch
-                // This ensures we have the role and full data before redirecting.
+                // ✨ STEP 2: Profile Sync
                 try {
                     const fullProfile = await userService.getProfile();
-                    localStorage.setItem('user', JSON.stringify(fullProfile));
                     
-                    // Double-check storage has the correct email from the database profile
+                    // Finalize storage with verified data from DB
+                    localStorage.setItem('user', JSON.stringify(fullProfile));
                     localStorage.setItem('userEmail', fullProfile.email);
                     
-                    // Trigger global storage update for the Header and other listeners
+                    // Force a storage event to wake up the Header/App listeners
                     window.dispatchEvent(new Event("storage"));
                     
-                    toast.success(`Welcome, ${fullProfile.fullName || 'User'}!`);
+                    toast.success(`Welcome back, ${fullProfile.fullName}!`);
 
-                    // 5. Role-Based Redirect
-                    if (fullProfile.role === 'ADMIN') {
-                        // Use window.location for Admin to ensure a clean state reload
-                        window.location.href = '/admin/orders';
-                    } else {
-                        // Regular users go to profile
-                        navigate('/profile', { replace: true });
-                    }
+                    // ✨ STEP 3: Controlled Navigation
+                    // Use window.location for Admin to break any stale state loops
+                    setTimeout(() => {
+                        if (fullProfile.role === 'ADMIN') {
+                            window.location.href = '/admin/orders'; // Force reload for Admin
+                        } else {
+                            navigate('/profile', { replace: true }); // 'replace' stops back-button loops
+                        }
+                    }, 100);
                 } catch (profileErr) {
-                    console.error("Profile sync failed, redirecting to home:", profileErr);
-                    navigate('/', { replace: true });
+                    console.error("Profile sync failed:", profileErr);
+                    // Fallback: proceed to profile even if full data isn't synced yet
+                    navigate('/profile', { replace: true });
                 }
             } else {
                 throw new Error("Invalid response from server");
             }
 
         } catch (err: any) {
-            console.error("Auth Error Details:", err);
-            const errorMsg = err.response?.data?.message || err.response?.data || "Authentication failed. Check your credentials.";
+            console.error("Auth Error:", err);
+            const errorMsg = err.response?.data?.message || "Login failed. Please check credentials.";
             toast.error(errorMsg);
         } finally {
             setLoading(false);

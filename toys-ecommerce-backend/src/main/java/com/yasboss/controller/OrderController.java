@@ -6,7 +6,6 @@ import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,14 +16,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.yasboss.dto.PaymentRequest;
 import com.yasboss.model.Order;
+import com.yasboss.model.User;
 import com.yasboss.repository.OrderRepository;
 import com.yasboss.repository.UserRepository;
 import com.yasboss.service.OrderService;
 
 @RestController
 @RequestMapping("/api/orders")
-@CrossOrigin(origins = "http://localhost:5173") 
 public class OrderController {
 
     @Autowired
@@ -117,5 +117,28 @@ public class OrderController {
         );
         
         return ResponseEntity.ok(pendingOrder);
+    }
+
+    @PostMapping("/process-payment")
+    public ResponseEntity<?> processPayment(@RequestBody PaymentRequest request) {
+        // 1. Fetch Order from DB
+        Order order = orderRepository.findByOrderId(request.getOrderId())
+            .orElseThrow(() -> new RuntimeException("Order Not Found"));
+
+        // 2. Validate Amount
+        if (!order.getTotalAmount().equals(request.getAmount())) {
+            return ResponseEntity.badRequest().body("Amount Mismatch");
+        }
+
+        // 3. Update Order Status
+        order.setStatus("PAID");
+        orderRepository.save(order);
+
+        // 4. Update User Reward Points (Add 1 point per 100 spent)
+        User user = userRepository.findByEmail(order.getUserEmail()).get();
+        user.setRewardPoints(user.getRewardPoints() + (int)(order.getTotalAmount() / 100));
+        userRepository.save(user);
+
+        return ResponseEntity.ok(Map.of("status", "SUCCESS"));
     }
 }

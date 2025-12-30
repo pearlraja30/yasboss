@@ -10,7 +10,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,15 +17,14 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.yasboss.dto.LoginRequest;
 import com.yasboss.model.User;
-import com.yasboss.repository.UserRepository; // Added missing import
+import com.yasboss.repository.UserRepository;
 import com.yasboss.security.JwtUtils; // Added missing import
-import com.yasboss.service.AuthService;
+import com.yasboss.service.AuthService; // Added missing import
 
 import lombok.extern.slf4j.Slf4j;
 
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin(origins = "http://localhost:5173")
 @Slf4j
 public class AuthController {
 

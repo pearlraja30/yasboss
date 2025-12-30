@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { User, ShoppingBag, MapPin, Trophy, History, Loader2 } from 'lucide-react';
+import { User, ShoppingBag, MapPin, Trophy, History, Loader2, Gamepad2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import api from '../services/api';
 import { toast } from 'react-toastify';
@@ -48,6 +48,7 @@ const Profile: React.FC = () => {
     const navLinks = [
         { name: 'Order History', icon: ShoppingBag, to: 'orders' },
         { name: 'Reward Tracker', icon: Trophy, to: 'rewards' },
+        { name: 'Play & Earn',  icon: Gamepad2, to: 'quiz' },
         { name: 'Account Details', icon: User, to: 'details' },
         { name: 'Saved Addresses', icon: MapPin, to: 'addresses' },
     ];

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, ShieldCheck, ArrowLeft, Loader2, Sparkles, Tag, Phone, CheckCircle2, Truck, ArrowRight } from 'lucide-react';
+import { MapPin, ArrowLeft, Loader2, Sparkles, Phone, CheckCircle2, Truck, ArrowRight } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import api from '../services/api'; 
@@ -55,7 +55,6 @@ const Checkout: React.FC = () => {
     const subtotal = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
     const discountFromCoupon = (subtotal * couponDiscount) / 100;
     const taxableAmount = subtotal - discountFromCoupon;
-    const gstTotal = taxableAmount * 0.18; 
     const deliveryCharge = subtotal >= 500 ? 0 : 49;
     const discountFromPoints = usePoints ? Math.min(taxableAmount, userPoints * pointValue) : 0;
     const total = taxableAmount + deliveryCharge - discountFromPoints;
@@ -75,24 +74,46 @@ const Checkout: React.FC = () => {
         }
     };
 
-    const handlePlaceOrder = async () => {
-        setLoading(true);
+    /**
+     * ✨ handleConfirmOrder
+     * Handles the API call and navigation based on production requirements.
+     */
+    const handleConfirmOrder = async () => {
+        const token = localStorage.getItem('jwtToken');
+        const email = localStorage.getItem('userEmail');
+
+        if (!token || token === "null" || !email) {
+            toast.error("Session expired. Please log in again.");
+            navigate('/login');
+            return;
+        }
+
         try {
+            setLoading(true);
+            
+            // Construct the shipping address string from state
+            const fullAddress = `${address.street}, ${address.city}, ${address.zip}`;
+
             const orderData = {
                 productName: cartItems.map(i => i.name).join(", "),
+                items: cartItems,
                 totalAmount: total,
-                paymentMethod: "UPI/CARD", 
-                address: `${address.street}, ${address.city}, ${address.zip}`
+                shippingAddress: fullAddress,
+                email: email,
+                paymentMethod: "UPI/CARD"
             };
 
-            // Backend returns the Order object containing the generated orderId
             const response = await api.orderService.createOrder(orderData);
-            
-            setPlacedOrderData(response);
-            localStorage.removeItem('cart');
-            setShowSuccess(true); // Open the success modal
-        } catch (err) {
-            toast.error("Checkout failed. Please check your network.");
+
+            if (response) {
+                setPlacedOrderData(response);
+                localStorage.removeItem('cart');
+                setShowSuccess(true);
+                toast.success("Order confirmed!");
+            }
+        } catch (err: any) {
+            console.error("Checkout Error:", err);
+            toast.error(err.response?.data?.message || "Checkout failed. Please check your network.");
         } finally {
             setLoading(false);
         }
@@ -124,16 +145,38 @@ const Checkout: React.FC = () => {
                         </div>
                     </motion.div>
 
-                    {/* Loyalty Toggle */}
-                    <motion.div className="bg-gradient-to-br from-[#2D4A73] to-[#1e334f] rounded-[3rem] p-10 shadow-xl text-white flex justify-between items-center">
-                        <div>
-                            <h3 className="text-2xl font-black mb-1">Redeem Rewards</h3>
-                            <p className="text-blue-200 font-bold uppercase text-[10px] tracking-widest">Available Points: {userPoints}</p>
-                        </div>
-                        <button onClick={() => setUsePoints(!usePoints)} className={`w-16 h-8 rounded-full relative transition-all ${usePoints ? 'bg-green-500' : 'bg-[#0a1526]'}`}>
-                            <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${usePoints ? 'left-9' : 'left-1'}`} />
-                        </button>
-                    </motion.div>
+                    {/* Loyalty Toggle & Quiz Promotion */}
+                    <div className="space-y-4">
+                        <motion.div className="bg-gradient-to-br from-[#2D4A73] to-[#1e334f] rounded-[3rem] p-10 shadow-xl text-white flex justify-between items-center">
+                            <div>
+                                <h3 className="text-2xl font-black mb-1">Redeem Rewards</h3>
+                                <p className="text-blue-200 font-bold uppercase text-[10px] tracking-widest">Available Points: {userPoints}</p>
+                            </div>
+                            <button onClick={() => setUsePoints(!usePoints)} className={`w-16 h-8 rounded-full relative transition-all ${usePoints ? 'bg-green-500' : 'bg-[#0a1526]'}`}>
+                                <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${usePoints ? 'left-9' : 'left-1'}`} />
+                            </button>
+                        </motion.div>
+
+                        {/* ✨ Quiz Incentive: Show only if user has 0 points */}
+                        {userPoints === 0 && (
+                            <motion.div 
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className="p-6 bg-blue-500/10 rounded-[2.5rem] border border-blue-500/20 flex flex-col md:flex-row justify-between items-center gap-4"
+                            >
+                                <div className="text-center md:text-left">
+                                    <p className="text-xs font-black text-[#2D4A73] uppercase tracking-widest">Need a discount?</p>
+                                    <p className="text-sm font-bold text-blue-600">Play our Toy Quiz and earn 50 points instantly!</p>
+                                </div>
+                                <button 
+                                    onClick={() => navigate('/profile/quiz')} 
+                                    className="whitespace-nowrap px-8 py-3 bg-white text-[#2D4A73] font-black text-[10px] uppercase tracking-widest rounded-2xl shadow-sm hover:shadow-md transition-all active:scale-95"
+                                >
+                                    Play Quiz & Earn Points
+                                </button>
+                            </motion.div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Order Summary Sidebar */}
@@ -144,8 +187,12 @@ const Checkout: React.FC = () => {
                             <div className="flex justify-between text-gray-500 font-bold"><span>Subtotal</span><span>₹{subtotal.toFixed(2)}</span></div>
                             <div className="flex justify-between text-gray-500 font-bold"><span>Total</span><span className="text-3xl font-black text-[#2D4A73]">₹{total.toFixed(2)}</span></div>
                         </div>
-                        <button onClick={handlePlaceOrder} disabled={loading || !address.street} className="w-full bg-[#2D4A73] text-white py-6 rounded-[2rem] font-black text-lg shadow-xl hover:bg-[#1e334f] transition-all disabled:opacity-50">
-                            {loading ? <Loader2 className="animate-spin" /> : 'Confirm Order'}
+                        <button 
+                            onClick={handleConfirmOrder} 
+                            disabled={loading || !address.street || !address.city || !address.zip} 
+                            className="w-full bg-[#2D4A73] text-white py-6 rounded-[2rem] font-black text-lg shadow-xl hover:bg-[#1e334f] transition-all disabled:opacity-50"
+                        >
+                            {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Confirm Order'}
                         </button>
                     </div>
                 </div>
@@ -172,7 +219,7 @@ const Checkout: React.FC = () => {
                                 <p className="text-sm text-gray-500 font-medium">Your package is being prepared. Track live status in your profile.</p>
                             </div>
                             <div className="flex flex-col gap-4">
-                                <button onClick={() => navigate('/profile/orders')} className="w-full bg-[#2D4A73] text-white py-5 rounded-[2rem] font-black text-lg shadow-xl hover:bg-[#1e334f] flex items-center justify-center gap-3">
+                                <button onClick={() => navigate('/profile')} className="w-full bg-[#2D4A73] text-white py-5 rounded-[2rem] font-black text-lg shadow-xl hover:bg-[#1e334f] flex items-center justify-center gap-3">
                                     Track My Order <ArrowRight size={20} />
                                 </button>
                                 <button onClick={() => navigate('/')} className="text-sm font-black text-gray-400 uppercase tracking-widest hover:text-[#2D4A73]">Back to Home</button>

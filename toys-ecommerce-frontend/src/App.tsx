@@ -46,6 +46,7 @@ import Leaderboard from './components/Leaderboard';
 import RewardTracker from './components/profile/RewardTracker';
 import NotFound from './pages/NotFound';
 import ProductListing from './components/ProductListing';
+import Payment from './components/Payment';
 
 // 🛠️ CUSTOMER LAYOUT WRAPPER
 const CustomerLayout = () => (
@@ -100,6 +101,7 @@ const App: React.FC = () => {
                             <Route path="/products/features" element={<FeaturedProducts />} />
                             <Route path="/about" element={<AboutUs />} />
                             <Route path="/help" element={<HelpCenter />} />
+                            <Route path="/payment" element={<Payment />} />
                             
                             {/* Public Listing - Explicitly allows guest browsing without token check */}
                             <Route path="/products" element={<ProductListing />} />
@@ -122,6 +124,7 @@ const App: React.FC = () => {
                                 <Route path="details" element={<UserDetails />} />
                                 <Route path="rewards" element={<RewardTracker />} />
                                 <Route path="addresses" element={<SavedAddresses />} />
+                                <Route path="quiz" element={<QuizPage />} />
                             </Route>
                         </Route>
 
