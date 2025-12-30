@@ -2,6 +2,7 @@ package com.yasboss.service;
 
 import java.util.Collections;
 
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -23,11 +24,16 @@ public class UserService implements UserDetailsService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
 
-        return org.springframework.security.core.userdetails.User.builder()
-            .username(user.getEmail())
-            .password(user.getPassword())
-            .authorities(Collections.emptyList()) 
-            .build();
+        // ✨ CRITICAL: Convert the 'role' string (e.g., "ADMIN") to a GrantedAuthority
+        // hasRole("ADMIN") expects "ROLE_ADMIN" in the list
+        String roleWithPrefix = user.getRole().startsWith("ROLE_") ? 
+                                user.getRole() : "ROLE_" + user.getRole();
+
+        return new org.springframework.security.core.userdetails.User(
+        user.getEmail(),
+        user.getPassword(),
+        Collections.singletonList(new SimpleGrantedAuthority(roleWithPrefix))
+    );
     }
 
     public User getUserByEmail(String email) {

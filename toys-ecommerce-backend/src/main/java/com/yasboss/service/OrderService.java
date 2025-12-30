@@ -182,4 +182,8 @@ public class OrderService {
         
         return orderRepo.save(order);
     }
+
+    public List<Order> getOrdersByEmail(String email) {
+        return orderRepo.findByUserEmailOrderByCreatedAtDesc(email);
+    }
 }

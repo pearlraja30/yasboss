@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, User, ArrowRight, Loader2, Sparkles, Eye, EyeOff, MapPin, Phone } from 'lucide-react';
+import { Mail, Lock, User, ArrowRight, Loader2, Eye, EyeOff, MapPin, Phone } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
-import api, { authService, userService } from '../services/api';
+import { authService, userService } from '../services/api';
 
 const Login: React.FC = () => {
     const [isLogin, setIsLogin] = useState(true);
@@ -36,29 +36,36 @@ const Login: React.FC = () => {
                 : await authService.register(authData);
             
             if (response && response.token) {
-                // 3. Save Token immediately
+                // 3. ✨ CRITICAL FIX: Save Token AND Email separately
+                // OrderHistory.tsx requires 'userEmail' to avoid redirecting to login.
                 localStorage.setItem('jwtToken', response.token);
+                localStorage.setItem('userEmail', formData.email.trim());
                 
                 // 4. ✨ The Sync Fix: Await the profile fetch
-                // This ensures we have the data BEFORE moving to the next page
+                // This ensures we have the role and full data before redirecting.
                 try {
                     const fullProfile = await userService.getProfile();
                     localStorage.setItem('user', JSON.stringify(fullProfile));
                     
-                    // Trigger global storage update
+                    // Double-check storage has the correct email from the database profile
+                    localStorage.setItem('userEmail', fullProfile.email);
+                    
+                    // Trigger global storage update for the Header and other listeners
                     window.dispatchEvent(new Event("storage"));
                     
                     toast.success(`Welcome, ${fullProfile.fullName || 'User'}!`);
 
                     // 5. Role-Based Redirect
                     if (fullProfile.role === 'ADMIN') {
+                        // Use window.location for Admin to ensure a clean state reload
                         window.location.href = '/admin/orders';
                     } else {
+                        // Regular users go to profile
                         navigate('/profile', { replace: true });
                     }
                 } catch (profileErr) {
-                    console.error("Profile sync failed, redirecting anyway:", profileErr);
-                    navigate('/profile');
+                    console.error("Profile sync failed, redirecting to home:", profileErr);
+                    navigate('/', { replace: true });
                 }
             } else {
                 throw new Error("Invalid response from server");

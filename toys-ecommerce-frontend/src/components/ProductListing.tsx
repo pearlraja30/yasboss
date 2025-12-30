@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
     ShoppingCart, Star, Loader2, 
-    Sparkles, PackageSearch, ShoppingBag
+    Sparkles, PackageSearch
 } from 'lucide-react';
 import api from '../services/api';
 import { toast } from 'react-toastify';
@@ -25,6 +25,10 @@ const ProductListing: React.FC = () => {
     const fetchProducts = async () => {
         try {
             setLoading(true);
+            /**
+             * ✨ Fixed: This call now matches your updated ProductController.java
+             * which uses the /filter endpoint.
+             */
             const data = await api.productService.getProducts({
                 category: category || '',
                 age: age || '',
@@ -33,6 +37,7 @@ const ProductListing: React.FC = () => {
             setProducts(data);
         } catch (err) {
             console.error("Fetch Error:", err);
+            // This toast handles the 403 error if the security permitAll is missing
             toast.error("Unable to load the toy box right now.");
         } finally {
             setLoading(false);
@@ -95,10 +100,9 @@ const ProductListing: React.FC = () => {
 
     return (
         <div className="bg-[#F8F9FA] min-h-screen pt-32 pb-20 relative">
-            
             <div className="max-w-7xl mx-auto px-6">
                 
-                {/* 1. Dynamic Page Header - Cleaned version */}
+                {/* 1. Dynamic Page Header */}
                 {products.length > 0 && (
                     <div className="mb-12">
                         <h1 className="text-5xl font-black text-[#2D4A73] tracking-tighter capitalize italic">
@@ -112,7 +116,7 @@ const ProductListing: React.FC = () => {
 
                 <AnimatePresence>
                     {products.length === 0 ? (
-                        /* 2. "Coming Soon" UI */
+                        /* 2. Enhanced "Coming Soon" UI */
                         <motion.div 
                             initial={{ opacity: 0, y: 20 }} 
                             animate={{ opacity: 1, y: 0 }} 
@@ -156,9 +160,18 @@ const ProductListing: React.FC = () => {
                                 >
                                     <div className="aspect-square rounded-[2.5rem] overflow-hidden bg-gray-50 mb-6 relative">
                                         <img 
-                                            src={product.imageUrl || '/images/placeholder.jpg'} 
+                                            /**
+                                             * ✨ Fixed: Image Pathing
+                                             * Points to the local frontend public assets to avoid 403 errors from :8080.
+                                             */
+                                            src={product.imageUrl} 
                                             alt={product.name} 
-                                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                                            className="w-full h-full object-contain mix-blend-multiply transition-transform duration-700 group-hover:scale-110" 
+                                            onError={(e) => {
+                                                const target = e.target as HTMLImageElement;
+                                                target.onerror = null; // 🛡️ Stop the loop
+                                                target.src = 'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?q=80&w=500&auto=format&fit=crop'; 
+                                            }}
                                         />
                                         <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md p-2 rounded-xl flex items-center gap-1 shadow-sm">
                                             <Star size={12} className="text-yellow-400 fill-yellow-400" />

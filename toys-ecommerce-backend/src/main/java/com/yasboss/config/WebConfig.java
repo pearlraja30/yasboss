@@ -9,9 +9,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // This makes 'public/images/' folder in your project root accessible via /images/**
+      // Expose the uploads directory to the web
+        registry.addResourceHandler("/uploads/**")
+                .addResourceLocations("file:target/classes/static/uploads/");
+        
+        // Expose standard static images
         registry.addResourceHandler("/images/**")
-                .addResourceLocations("file:public/images/", "classpath:/static/images/");
+                .addResourceLocations("classpath:/static/images/");
     }
 
     @Override

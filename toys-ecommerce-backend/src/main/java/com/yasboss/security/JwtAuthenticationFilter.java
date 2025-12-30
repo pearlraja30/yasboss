@@ -16,9 +16,11 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Autowired private JwtUtils jwtUtils;
@@ -37,16 +39,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 if (jwtUtils.validateToken(token)) {
                     String email = jwtUtils.getEmailFromToken(token);
                     UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+
+                    // DEBUG: Print the authorities to see if they have the "ROLE_" prefix
+                    log.info("DEBUG: User Authorities: " + userDetails.getAuthorities());
                     
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                             userDetails, null, userDetails.getAuthorities());
                     
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
-                    System.out.println("DEBUG: Security Context populated for: " + email);
+                    log.info("DEBUG: Security Context populated for: " + email);
                 }
             } catch (Exception e) {
-                System.out.println("DEBUG: JWT Validation Failed: " + e.getMessage());
+                log.error("DEBUG: JWT Validation Failed: " + e.getMessage(), e);
             }
         }
         filterChain.doFilter(request, response);

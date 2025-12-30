@@ -43,7 +43,7 @@ public class OrderController {
     @GetMapping("/user/{email}")
     public ResponseEntity<List<Order>> getUserOrders(@PathVariable String email) {
         // Ensure the repository method matches the field name in your Order entity
-        List<Order> orders = orderRepository.findByUserEmailOrderByCreatedAtDesc(email);
+        List<Order> orders = orderService.getOrdersByEmail(email);
         return ResponseEntity.ok(orders);
     }
 

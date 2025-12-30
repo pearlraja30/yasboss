@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { ShoppingCart, Eye, Loader2, Sparkles } from 'lucide-react';
 import type { Product } from '../types/Product';
 import { motion, AnimatePresence } from 'framer-motion';
-import axios from 'axios';
+import api from '../services/api'; // ✨ Use the centralized API service
 import { toast } from 'react-toastify';
 
 interface ProductCardProps {
@@ -16,35 +16,49 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onQuickView }) => {
     const navigate = useNavigate();
     const [isAdding, setIsAdding] = useState(false);
 
-    // Backend URL handling logic
-    const imageUrl = product.imageUrl?.startsWith('http') 
-        ? product.imageUrl 
-        : `http://localhost:8080${product.imageUrl}`;
+    /**
+     * ✨ THE FIX: Image Handling
+     * Since images are in the frontend, we use relative paths.
+     * This avoids the 403 error from the Java backend (:8080).
+     */
+    const imageUrl = product.imageUrl; // Pointing to public/images/products
 
     const oldPrice = Math.round(product.price * 1.5);
 
     const handleAddToCart = async (e: React.MouseEvent) => {
         e.preventDefault();
-        e.stopPropagation(); // Prevents Link navigation
+        e.stopPropagation();
 
         const userEmail = localStorage.getItem('userEmail');
         if (!userEmail) {
             toast.warn("Please Sign In to shop!");
+            // Redirect to login if guest attempts to shop
+            navigate('/login', { state: { from: window.location.pathname } });
             return;
         }
 
         setIsAdding(true);
         try {
-            await axios.post(
-                `http://localhost:8080/api/cart/add/${product.id}`, 
-                {}, 
-                { headers: { 'X-User-Email': userEmail } }
-            );
+            /**
+             * ✨ THE FIX: Authorization Header
+             * Using api.cartService ensures the JWT token is attached via interceptor.
+             * This prevents 403 errors during authenticated sessions.
+             */
+            await api.cartService.addToCart(product.id, 1, userEmail);
+            
             toast.success(`${product.name} added!`, {
                 icon: <ShoppingCart className="text-green-500" />
             });
-        } catch (error) {
-            toast.error("Database connection failed.");
+            
+            // Sync cart icon count across tabs/components
+            window.dispatchEvent(new Event("storage"));
+            
+        } catch (error: any) {
+            console.error("Cart error:", error);
+            const msg = error.response?.status === 403 
+                ? "Session expired. Please sign in again." 
+                : "Database connection failed.";
+            toast.error(msg);
         } finally {
             setIsAdding(false);
         }
@@ -64,7 +78,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onQuickView }) => {
             >
                 {/* Image & Badge Container */}
                 <div className="relative h-72 bg-[#F9FAFB] p-8 overflow-hidden flex items-center justify-center">
-                    {/* Dynamic Badges */}
                     <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
                         {product.price >= 500 && (
                             <span className="bg-blue-600 text-white text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-tighter shadow-lg flex items-center gap-1">
@@ -78,7 +91,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onQuickView }) => {
                         )}
                     </div>
 
-                    {/* Quick View Overlay */}
                     <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20 flex items-center justify-center">
                         <motion.button
                             whileHover={{ scale: 1.1 }}
@@ -95,13 +107,18 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onQuickView }) => {
                     </div>
 
                     <img 
-                        src={imageUrl} 
+                        src={product.imageUrl} 
                         alt={product.name}
                         className="w-full h-full object-contain mix-blend-multiply transition-transform duration-1000 group-hover:scale-110"
+                        // Fallback image in case the file is missing from local folder
+                        onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.onerror = null; // 🛡️ Stop the loop
+                            target.src = 'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?q=80&w=500&auto=format&fit=crop';
+                        }}
                     />
                 </div>
 
-                {/* Content Section */}
                 <div className="p-6 flex flex-col flex-grow">
                     <div className="mb-2">
                         <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{product.category}</span>
@@ -110,7 +127,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onQuickView }) => {
                         </h3>
                     </div>
 
-                    {/* Price & Stock Row */}
                     <div className="mt-4 flex items-end justify-between">
                         <div>
                             <div className="flex items-center gap-2">
@@ -127,7 +143,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onQuickView }) => {
                         </div>
                     </div>
 
-                    {/* Comparison Toggle */}
                     <label className="flex items-center gap-2 mt-6 p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
                         <input 
                             type="checkbox" 
@@ -137,7 +152,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onQuickView }) => {
                         <span className="text-[11px] font-black text-gray-500 uppercase tracking-tighter">Add to Compare</span>
                     </label>
 
-                    {/* CTA Button */}
                     <button 
                         onClick={handleAddToCart}
                         disabled={isAdding || product.stock <= 0}

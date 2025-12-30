@@ -66,9 +66,22 @@ const CompareContainer = () => {
 };
 
 const App: React.FC = () => {
-    // ✨ ADDED: Retrieve user and token from localStorage
-    const user = JSON.parse(localStorage.getItem('user') || 'null');
-    const token = localStorage.getItem('jwtToken'); // Fixed: Define missing token
+    /**
+     * ✨ FIX: Robust Token Validation
+     * This prevents "ghost" tokens from blocking navigation to the login page.
+     * If the localStorage contains "null" as a string, it returns null.
+     */
+    const getValidToken = () => {
+        const t = localStorage.getItem('jwtToken');
+        console.log("Retrieved token:", t);
+        // Check for common 'ghost' token strings that cause routing loops
+        if (!t || t === "null" || t === "undefined" || t.trim() === "" || t.length < 20) {
+            return null;
+        }
+        return t;
+    };
+
+    const token = getValidToken();
     
     return (
         <CompareProvider>
@@ -88,22 +101,22 @@ const App: React.FC = () => {
                             <Route path="/about" element={<AboutUs />} />
                             <Route path="/help" element={<HelpCenter />} />
                             
-                            {/* Public Listing - Allows Guest Browsing */}
+                            {/* Public Listing - Explicitly allows guest browsing without token check */}
                             <Route path="/products" element={<ProductListing />} />
                             
-                            {/* Protected Customer Features */}
-                            <Route path="/cart" element={token ? <Cart /> : <Navigate to="/login" />} />
-                            <Route path="/checkout" element={token ? <Checkout /> : <Navigate to="/login" />} />
-                            <Route path="/order-success" element={token ? <OrderSuccess /> : <Navigate to="/login" />} />
-                            <Route path="/orders" element={token ? <MyOrders /> : <Navigate to="/login" />} />
-                            <Route path="/wishlist" element={token ? <Wishlist /> : <Navigate to="/login" />} />
+                            {/* Protected Customer Features - Redirects to /login if no valid token */}
+                            <Route path="/cart" element={token ? <Cart /> : <Navigate to="/login" replace />} />
+                            <Route path="/checkout" element={token ? <Checkout /> : <Navigate to="/login" replace />} />
+                            <Route path="/order-success" element={token ? <OrderSuccess /> : <Navigate to="/login" replace />} />
+                            <Route path="/orders" element={token ? <MyOrders /> : <Navigate to="/login" replace />} />
+                            <Route path="/wishlist" element={token ? <Wishlist /> : <Navigate to="/login" replace />} />
 
                             {/* Quiz & Leaderboard - Protected */}
-                            <Route path="/quiz" element={token ? <QuizPage /> : <Navigate to="/login" />} />
-                            <Route path="/leaderboard" element={token ? <Leaderboard /> : <Navigate to="/login" />} />
+                            <Route path="/quiz" element={token ? <QuizPage /> : <Navigate to="/login" replace />} />
+                            <Route path="/leaderboard" element={token ? <Leaderboard /> : <Navigate to="/login" replace />} />
 
-                            {/* User Profile - Protected */}
-                            <Route path="/profile" element={token ? <Profile /> : <Navigate to="/login" />}>
+                            {/* User Profile - Protected Group */}
+                            <Route path="/profile" element={token ? <Profile /> : <Navigate to="/login" replace />}>
                                 <Route index element={<OrderHistory />} /> 
                                 <Route path="orders" element={<OrderHistory />} />
                                 <Route path="details" element={<UserDetails />} />
@@ -121,8 +134,11 @@ const App: React.FC = () => {
                             </Route>
                         </Route>
 
-                        {/* AUTH PAGES */}
-                        <Route path="/login" element={token ? <Navigate to="/" /> : <Login />} />
+                        {/* 🔐 AUTH PAGES
+                            If a valid token exists, redirect away from login to prevent unnecessary re-auth.
+                            If token is invalid/null, show the Login pages.
+                        */}
+                        <Route path="/login" element={ <Login />} />
                         <Route path="/admin/login" element={<AdminLogin />} />
 
                         <Route path="*" element={<NotFound />} />
