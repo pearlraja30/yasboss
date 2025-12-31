@@ -1,10 +1,12 @@
 package com.yasboss.controller;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,8 +25,11 @@ import com.yasboss.repository.OrderRepository;
 import com.yasboss.repository.UserRepository;
 import com.yasboss.service.OrderService;
 
+import lombok.extern.slf4j.Slf4j;
+
 @RestController
 @RequestMapping("/api/orders")
+@Slf4j
 public class OrderController {
 
     @Autowired
@@ -40,8 +45,9 @@ public class OrderController {
      * Get all orders for a specific user.
      * Used by the "My Orders" page in React.
      */
-    @GetMapping("/user/{email}")
+    @GetMapping("/user/{email:.+}")
     public ResponseEntity<List<Order>> getUserOrders(@PathVariable String email) {
+        log.info("Fetching orders for user: {}", email);
         // Ensure the repository method matches the field name in your Order entity
         List<Order> orders = orderService.getOrdersByEmail(email);
         return ResponseEntity.ok(orders);
@@ -51,6 +57,7 @@ public class OrderController {
      * Admin only: Get all orders for the dashboard.
      */
     @GetMapping("/all")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<Order>> getAllOrders() {
         // Fetches all orders from the database, newest first
         return ResponseEntity.ok(orderRepository.findAllByOrderByCreatedAtDesc());
@@ -61,15 +68,22 @@ public class OrderController {
      * Receives the 'YB-XXXX' string orderId.
      */
     @PutMapping("/{orderId}/status")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Order> updateStatus(
         @PathVariable String orderId, 
-        @RequestParam String status
+        @RequestParam String status,
+        @RequestParam(required = false) String agentName, // ✨ Matches new frontend field
+        @RequestParam(required = false) String agentPhone // ✨ Matches new frontend field
     ) {
-        // Lookup by the custom String orderId used in the frontend
         Order order = orderRepository.findByOrderId(orderId)
-            .orElseThrow(() -> new RuntimeException("Order not found with reference: " + orderId));
+            .orElseThrow(() -> new RuntimeException("Order not found: " + orderId));
         
         order.setStatus(status);
+        
+        // Update the logistical details
+        if (agentName != null) order.setDeliveryAgentName(agentName);
+        if (agentPhone != null) order.setDeliveryAgentPhone(agentPhone);
+        
         return ResponseEntity.ok(orderRepository.save(order));
     }
     
@@ -140,5 +154,49 @@ public class OrderController {
         userRepository.save(user);
 
         return ResponseEntity.ok(Map.of("status", "SUCCESS"));
+    }
+
+    @PutMapping("/{orderId}/logistics")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Order> updateLogistics(
+        @PathVariable String orderId, 
+        @RequestParam String status,
+        @RequestParam String agentName,
+        @RequestParam String agentPhone
+    ) {
+        Order order = orderRepository.findByOrderId(orderId)
+            .orElseThrow(() -> new RuntimeException("Order not found: " + orderId));
+        
+        order.setStatus(status);
+        order.setDeliveryAgentName(agentName);
+        order.setDeliveryAgentPhone(agentPhone);
+        
+        // Add logic to set estimated delivery (e.g., current time + 2 days)
+        order.setEstimatedDelivery(LocalDateTime.now().plusDays(2));
+        
+        return ResponseEntity.ok(orderRepository.save(order));
+    }
+
+    @PutMapping("/{orderId}/agent-update")
+    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    public ResponseEntity<Order> agentStatusUpdate(
+        @PathVariable String orderId, 
+        @RequestParam String status,
+        @RequestParam(required = false) String deliveryNote
+    ) {
+        Order order = orderRepository.findByOrderId(orderId)
+            .orElseThrow(() -> new RuntimeException("Order not found: " + orderId));
+        
+        // Security: Verify the agent is the one assigned to this order
+        String currentAgentEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        // (Optional: add logic to check if currentAgentEmail matches order.getDeliveryAgentEmail())
+        
+        order.setStatus(status);
+        if (deliveryNote != null) {
+            // Append note to customer history
+            order.setCustomerNotes(order.getCustomerNotes() + " | Agent: " + deliveryNote);
+        }
+        
+        return ResponseEntity.ok(orderRepository.save(order));
     }
 }

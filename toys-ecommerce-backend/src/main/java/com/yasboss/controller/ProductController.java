@@ -34,6 +34,11 @@ public class ProductController {
 
     @Autowired
     private ProductService productService;
+    
+    @GetMapping
+    public List<Product> getBaseProducts() {
+        return productService.getAllProducts();
+    }
 
     // ✨ UPDATED: Explicitly named /filter to match frontend api.ts call
     // This MUST stay above the /{id} mapping to avoid type mismatch errors

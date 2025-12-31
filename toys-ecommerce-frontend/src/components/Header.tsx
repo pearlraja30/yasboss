@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, ShoppingCart, User, MapPin, X, Info, Heart, HelpCircle, LogOut, Star, Sparkles, ChevronDown } from 'lucide-react';
+import { Search, ShoppingCart, User, MapPin, X, Info, Heart, HelpCircle, LogOut, Star, Sparkles, ChevronDown, LayoutDashboard } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CategoryMenu from './CategoryMenu';
 import { getCurrentCoordinates, getAddressFromCoords } from '../services/locationService';
@@ -34,10 +34,12 @@ const Header: React.FC = () => {
         { label: "6 + Years", value: "6+", image: "/images/ages/age-6.jpg" }
     ];
 
-    // ✨ THE SYNC FIX: Ensure session is picked up immediately
     const syncSession = useCallback(() => {
         const savedUser = localStorage.getItem('user');
-        if (savedUser) {
+        // ✨ Validation: Ensure token exists before trusting session
+        const token = localStorage.getItem('jwtToken');
+        
+        if (savedUser && token && token !== "null") {
             try {
                 setUser(JSON.parse(savedUser));
             } catch (e) {
@@ -63,7 +65,6 @@ const Header: React.FC = () => {
         if (savedLocation) setLocation(savedLocation);
         
         syncSession();
-        // Added custom event listener for immediate login detection
         window.addEventListener('storage', syncSession);
         window.addEventListener('user-login', syncSession); 
         
@@ -75,12 +76,20 @@ const Header: React.FC = () => {
     }, [syncSession]);
 
     const handleLogout = () => {
-        localStorage.clear(); 
+        // 1. Clear all session data
+        localStorage.removeItem('jwtToken');
+        localStorage.removeItem('user');
+        localStorage.removeItem('userEmail');
+        localStorage.clear();
+        
+        // 2. Notify the application that the user has logged out
         window.dispatchEvent(new Event('storage'));
+        
         toast.success("Logged out successfully");
-        setIsUserMenuOpen(false);
-        navigate('/');
-        window.location.reload(); // Force refresh to clear all states
+
+        // 3. ✨ THE FIX: Force navigation to Home before reloading
+        //navigate('/', { replace: true }); 
+        window.location.href = '/';
     };
 
     const handleFetchLocation = async () => {
@@ -102,7 +111,7 @@ const Header: React.FC = () => {
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
         if (searchQuery.trim()) {
-            navigate(`/products?q=${encodeURIComponent(searchQuery.trim())}`); // Updated to ProductListing path
+            navigate(`/products?q=${encodeURIComponent(searchQuery.trim())}`);
             setIsSearchOpen(false);
             setSearchQuery('');
         }
@@ -110,6 +119,23 @@ const Header: React.FC = () => {
 
     return (
         <header ref={headerRef} className="fixed top-0 w-full z-[100] bg-white shadow-sm">
+            
+            {/* ✨ APPENDED: Promotional Marquee Bar */}
+            <div className="w-full bg-[#2D4A73] py-2 overflow-hidden border-b border-white/10">
+                <motion.div 
+                    initial={{ x: "100%" }}
+                    animate={{ x: "-100%" }}
+                    transition={{ repeat: Infinity, duration: 20, ease: "linear" }}
+                    className="whitespace-nowrap flex gap-20 items-center justify-center"
+                >
+                    {[1].map((i) => (
+                        <span key={i} className="text-white text-[11px] font-black uppercase tracking-[0.2em]">
+                            ₹49 Delivery Charge. Free Delivery above ₹500
+                        </span>
+                    ))}
+                </motion.div>
+            </div>
+
             <div className="border-b bg-white relative">
                 <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between gap-4">
                     
@@ -142,7 +168,7 @@ const Header: React.FC = () => {
                                             <Info size={18} /> <div><p className="text-sm font-bold">About Us</p></div>
                                         </Link>
                                         <Link to="/help" className="flex items-center gap-3 px-5 py-4 rounded-[1.5rem] text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-all">
-                                            <Heart size={18} /> <div><p className="text-sm font-bold">Help Center</p></div>
+                                            <HelpCircle size={18} /> <div><p className="text-sm font-bold">Help Center</p></div>
                                         </Link>
                                     </motion.div>
                                 )}
@@ -171,7 +197,6 @@ const Header: React.FC = () => {
                                 <span className="absolute top-1.5 right-1.5 bg-pink-600 text-white text-[8px] w-4 h-4 flex items-center justify-center rounded-full font-black">3</span>
                             </Link>
 
-                            {/* ✨ IMPROVED: User Profile Menu */}
                             <div 
                                 className="relative flex items-center" 
                                 onMouseEnter={() => user && setIsUserMenuOpen(true)} 
@@ -199,10 +224,18 @@ const Header: React.FC = () => {
                                 <AnimatePresence>
                                     {isUserMenuOpen && user && (
                                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute top-full right-0 w-56 bg-white/95 backdrop-blur-xl shadow-2xl rounded-3xl border border-gray-50 p-3 z-[110] mt-2">
-                                            <div className="px-4 py-3 mb-2 bg-gray-50 rounded-2xl">
+                                            <div className="px-4 py-3 mb-2 bg-gray-50 rounded-2xl border border-gray-100">
                                                 <p className="text-[10px] font-black text-gray-400 uppercase">Logged in as</p>
                                                 <p className="text-sm font-black text-[#2D4A73] truncate">{user.fullName}</p>
                                             </div>
+
+                                            {/* ✨ ADMIN COMMAND CENTER LINK */}
+                                            {user.role === 'ADMIN' && (
+                                                <Link to="/admin/orders" onClick={() => setIsUserMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl text-blue-600 hover:bg-blue-50 font-black text-xs uppercase transition-all mb-1">
+                                                    <LayoutDashboard size={16} /> Command Center
+                                                </Link>
+                                            )}
+
                                             <Link to="/profile" onClick={() => setIsUserMenuOpen(false)} className="block px-4 py-3 rounded-xl text-gray-700 hover:bg-gray-50 font-bold text-sm">My Profile</Link>
                                             <Link to="/profile/orders" onClick={() => setIsUserMenuOpen(false)} className="block px-4 py-3 rounded-xl text-gray-700 hover:bg-gray-50 font-bold text-sm">Order History</Link>
                                             <button onClick={handleLogout} className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 hover:bg-red-50 font-black text-sm mt-2 border-t border-gray-50">
@@ -229,7 +262,7 @@ const Header: React.FC = () => {
                 </div>
             </div>
 
-            {/* Sub Menus - Keep existing Logic */}
+            {/* Sub Menus */}
             <AnimatePresence>
                 {isCategoryOpen && (
                     <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="absolute top-full left-0 w-full bg-white shadow-2xl z-50 border-t border-gray-100">
@@ -248,7 +281,7 @@ const Header: React.FC = () => {
                             {ageGroups.map((age) => (
                                 <Link 
                                     key={age.value} 
-                                    to={`/products?age=${age.value}`} // Updated to ProductListing path
+                                    to={`/products?age=${age.value}`} 
                                     onClick={() => setIsCollectionOpen(false)} 
                                     className="group relative"
                                 >

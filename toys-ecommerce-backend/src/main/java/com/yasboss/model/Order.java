@@ -65,4 +65,12 @@ public class Order {
     @ManyToOne
     @JoinColumn(name = "user_id")
     private User user;
+
+    private String deliveryAgentName;
+    private String deliveryAgentPhone;
+    private String customerNotes;
+    private LocalDateTime estimatedDelivery;
+    
+    // JSONB tracking history
+    private String trackingStatusHistory;
 }

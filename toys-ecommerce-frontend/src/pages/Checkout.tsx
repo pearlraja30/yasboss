@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, ArrowLeft, Loader2, Sparkles, Phone, CheckCircle2, Truck, ArrowRight } from 'lucide-react';
+import { MapPin, ArrowLeft, Loader2, Sparkles, Phone, CheckCircle2, Truck, ArrowRight, Info } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import api from '../services/api'; 
@@ -11,6 +11,9 @@ const Checkout: React.FC = () => {
     const [cartItems, setCartItems] = useState<any[]>([]);
     const [address, setAddress] = useState({ street: '', city: '', zip: '', phone: '' });
     
+    // ✨ New state for customer delivery notes
+    const [customerNotes, setCustomerNotes] = useState('');
+
     // --- Success Modal State ---
     const [showSuccess, setShowSuccess] = useState(false);
     const [placedOrderData, setPlacedOrderData] = useState<any>(null);
@@ -76,7 +79,7 @@ const Checkout: React.FC = () => {
 
     /**
      * ✨ handleConfirmOrder
-     * Handles the API call and navigation based on production requirements.
+     * Updated to include customer logistical instructions
      */
     const handleConfirmOrder = async () => {
         const token = localStorage.getItem('jwtToken');
@@ -100,7 +103,8 @@ const Checkout: React.FC = () => {
                 totalAmount: total,
                 shippingAddress: fullAddress,
                 email: email,
-                paymentMethod: "UPI/CARD"
+                paymentMethod: "UPI/CARD",
+                customerNotes: customerNotes // ✨ Appended notes to payload
             };
 
             const response = await api.orderService.createOrder(orderData);
@@ -143,6 +147,19 @@ const Checkout: React.FC = () => {
                                 <input readOnly type="text" className="w-full pl-12 p-5 bg-gray-100/50 text-gray-400 rounded-2xl border-none font-bold outline-none cursor-not-allowed" value={address.phone} />
                             </div>
                         </div>
+
+                        {/* ✨ Added Delivery Instructions Field */}
+                        <div className="mt-8">
+                            <label className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2 mb-2">
+                                <Info size={12} /> Delivery Instructions (Optional)
+                            </label>
+                            <textarea 
+                                placeholder="e.g. Leave at the gate, call before arrival, or leave with neighbor..." 
+                                className="w-full p-5 bg-gray-50 border-none rounded-[2rem] h-32 outline-none font-medium text-gray-600 focus:ring-2 focus:ring-blue-100 transition-all resize-none"
+                                value={customerNotes}
+                                onChange={(e) => setCustomerNotes(e.target.value)}
+                            />
+                        </div>
                     </motion.div>
 
                     {/* Loyalty Toggle & Quiz Promotion */}
@@ -157,7 +174,7 @@ const Checkout: React.FC = () => {
                             </button>
                         </motion.div>
 
-                        {/* ✨ Quiz Incentive: Show only if user has 0 points */}
+                        {/* Quiz Incentive: Show only if user has 0 points */}
                         {userPoints === 0 && (
                             <motion.div 
                                 initial={{ opacity: 0, scale: 0.95 }}

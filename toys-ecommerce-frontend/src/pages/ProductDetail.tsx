@@ -94,6 +94,16 @@ const ProductDetail: React.FC = () => {
         localStorage.setItem('recent_toys', JSON.stringify(newHistory));
     };
 
+    const handleCheckout = () => {
+        if (!localStorage.getItem('jwtToken')) {
+            // Save where we want to go back to
+            localStorage.setItem('redirectAfterLogin', window.location.pathname);
+            navigate('/login');
+        } else {
+            navigate('/checkout');
+        }
+    };
+
     if (loading) return (
         <div className="flex flex-col items-center justify-center py-40">
             <Loader2 className="animate-spin text-[#2D4A73]" size={48} />

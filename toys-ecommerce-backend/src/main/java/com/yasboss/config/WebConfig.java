@@ -24,7 +24,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedOrigins("http://localhost:5173")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 // ✨ You MUST explicitly allow the Authorization header
-                .allowedHeaders("Authorization", "Content-Type", "X-User-Email") 
+                .allowedHeaders("Authorization", "Content-Type", "X-User-Email", "Cache-Control", "Access-Control-Allow-Origin") 
                 .allowCredentials(true);
     }
 }

@@ -1,200 +1,193 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Package, Truck, CheckCircle, RefreshCcw, ExternalLink, AlertTriangle, ArrowRight } from 'lucide-react';
+import { 
+    Package, Truck, CheckCircle, RefreshCcw, ExternalLink, 
+    Layers, DollarSign, Activity, User, Phone, FileText 
+} from 'lucide-react'; // ✨ Added FileText to imports
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
-import InventoryAlerts from '../../components/admin/InventoryAlerts';
-import QuizManager from './QuizManager';
-
-// --- NEW: Stock Alerts Sub-Component ---
-const StockAlerts = () => {
-    const [lowStockItems, setLowStockItems] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const navigate = useNavigate();
-
-    useEffect(() => {
-        const fetchLowStock = async () => {
-            try {
-                // threshold=5 identifies products with 5 or fewer items left
-                const res = await axios.get('http://localhost:8080/api/products/low-stock?threshold=5');
-                setLowStockItems(res.data);
-            } catch (err) {
-                console.error("Could not fetch stock alerts");
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchLowStock();
-    }, []);
-
-    if (loading || lowStockItems.length === 0) return null;
-
-    return (
-        <motion.div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-10 p-6 bg-amber-50 rounded-[2.5rem] border border-amber-100 flex flex-wrap items-center justify-between gap-6 shadow-sm"
-        >
-            <div className="flex items-center gap-6">
-                <div className="bg-amber-500 p-4 rounded-2xl text-white shadow-lg shadow-amber-200 animate-pulse">
-                    <AlertTriangle size={24} />
-                </div>
-                <div>
-                    <h3 className="text-xl font-black text-amber-900 tracking-tight">Inventory Alert</h3>
-                    <p className="text-amber-700 font-medium text-sm">
-                        {lowStockItems.length} products are running critically low on stock.
-                    </p>
-                </div>
-            </div>
-            
-            <div className="flex items-center gap-6">
-                <div className="flex items-center gap-3 bg-white/50 p-2 rounded-3xl pr-6 border border-white">
-                    <div className="flex -space-x-3 overflow-hidden p-1">
-                        {lowStockItems.slice(0, 4).map((item, i) => (
-                            <img 
-                                key={i} 
-                                src={item.imageUrl} 
-                                className="inline-block h-12 w-12 rounded-full ring-4 ring-amber-50 object-cover bg-white border border-gray-100" 
-                                title={`${item.name}: Only ${item.stock} left!`}
-                            />
-                        ))}
-                        {lowStockItems.length > 4 && (
-                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-200 text-xs font-black text-amber-700 ring-4 ring-amber-50">
-                                +{lowStockItems.length - 4}
-                            </div>
-                        )}
-                    </div>
-                    <div className="text-[10px] font-black text-amber-800 uppercase tracking-widest ml-2">
-                        Restock Needed
-                    </div>
-                </div>
-
-                <button 
-                    onClick={() => navigate('/admin/inventory')}
-                    className="p-4 bg-amber-900 text-white rounded-2xl hover:bg-black transition-all flex items-center gap-2 group"
-                >
-                    <span className="text-xs font-black uppercase">Manage</span>
-                    <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
-                </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <QuizManager />
-                <InventoryAlerts /> {/* Displays the new component here */}
-            </div>
-        </motion.div>
-    );
-};
+import { adminService } from '../../services/api'; 
 
 const AdminDashboard: React.FC = () => {
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [stats, setStats] = useState({ totalRevenue: 0, pending: 0, fulfillmentRate: 0 });
+    const navigate = useNavigate();
 
-    const fetchAllOrders = async () => {
+    const fetchDashboardData = async () => {
+        const token = localStorage.getItem('jwtToken');
+        if (!token || token === "null") {
+            toast.error("Unauthorized. Please login as Admin.");
+            navigate('/login');
+            return;
+        }
+
         try {
             setLoading(true);
-            const res = await axios.get('http://localhost:8080/api/orders/all');
-            setOrders(res.data);
-        } catch (err) {
-            toast.error("Failed to load dashboard data");
+            const res = await adminService.getAllOrders();
+            const orderData = res.data;
+            setOrders(orderData);
+            
+            const revenue = orderData.reduce((acc: number, curr: any) => acc + curr.totalAmount, 0);
+            const pending = orderData.filter((o: any) => o.status === 'PENDING').length;
+            const rate = orderData.length ? ((orderData.filter((o: any) => o.status === 'DELIVERED').length / orderData.length) * 100).toFixed(0) : 0;
+            
+            setStats({ totalRevenue: revenue, pending: pending, fulfillmentRate: Number(rate) });
+        } catch (err: any) {
+            console.error("403 Check:", err);
+            toast.error(err.response?.status === 403 ? "Access Denied: Admin Rights Required" : "Failed to load Command Center");
         } finally {
             setLoading(false);
         }
     };
 
-    useEffect(() => { fetchAllOrders(); }, []);
+    useEffect(() => { fetchDashboardData(); }, []);
 
-    const updateStatus = async (orderId: string, newStatus: string) => {
+   const updateStatus = async (orderId: string, newStatus: string, agentName: string = "", agentPhone: string = "") => {
         try {
-            await axios.put(`http://localhost:8080/api/orders/${orderId}/status?status=${newStatus}`);
-            toast.success(`Order #${orderId} marked as ${newStatus}`);
-            fetchAllOrders(); 
+            await adminService.updateOrderStatus(orderId, newStatus, agentName, agentPhone);
+            toast.success(`Order #${orderId} updated to ${newStatus}`);
+            fetchDashboardData(); 
         } catch (err) {
-            toast.error("Status update failed");
+            toast.error("Update failed. Check Admin permissions.");
         }
     };
 
-    const getStatusStyle = (status: string) => {
-        switch (status) {
-            case 'DELIVERED': return 'bg-green-100 text-green-700 border-green-200';
-            case 'SHIPPED': return 'bg-blue-100 text-blue-700 border-blue-200';
-            default: return 'bg-amber-100 text-amber-700 border-amber-200';
+    const handleDispatch = (orderId: string) => {
+        const name = prompt("Enter Delivery Agent Name:");
+        const phone = prompt("Enter Agent Phone Number:");
+        
+        if (name && phone) {
+            updateStatus(orderId, 'SHIPPED', name, phone);
+        } else {
+            toast.warn("Agent details are required for dispatch.");
         }
     };
 
-    if (loading) return <div className="p-20 text-center font-black text-[#2D4A73] animate-pulse">Syncing Admin Command Center...</div>;
+    const handleDeliver = (orderId: string) => {
+        if (window.confirm("Confirm successful delivery?")) {
+            updateStatus(orderId, 'DELIVERED', "", "");
+        }
+    };
+
+    if (loading) return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+            <div className="text-center">
+                <Activity className="animate-spin text-[#2D4A73] mx-auto mb-4" size={48} />
+                <h2 className="text-xl font-black text-[#2D4A73] uppercase tracking-tighter">Decrypting Logistics...</h2>
+            </div>
+        </div>
+    );
 
     return (
-        <div className="bg-gray-50 min-h-screen p-8">
+        <div className="bg-[#F8F9FA] min-h-screen p-4 md:p-12">
             <div className="max-w-7xl mx-auto">
-                <header className="mb-10 flex justify-between items-end">
+                <header className="mb-12 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
                     <div>
-                        <h1 className="text-5xl font-black text-[#2D4A73] tracking-tighter">Command Center</h1>
-                        <p className="text-gray-400 font-bold uppercase tracking-widest text-[10px] mt-2">Order Management & Logistics</p>
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="h-2 w-12 bg-pink-600 rounded-full" />
+                            <span className="text-[10px] font-black text-pink-600 uppercase tracking-[0.3em]">Live Intelligence</span>
+                        </div>
+                        <h1 className="text-6xl font-black text-[#2D4A73] tracking-tighter leading-none">Command<br/>Center</h1>
                     </div>
-                    <button 
-                        onClick={fetchAllOrders} 
-                        className="p-4 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all text-[#2D4A73] border border-gray-100"
-                    >
-                        <RefreshCcw size={20} />
-                    </button>
+                    
+                    <div className="flex gap-4">
+                        {/* ✨ NEW: Link to Logistics Manifest */}
+                        <button 
+                            onClick={() => navigate('/admin/logistics-summary')} 
+                            className="flex items-center gap-3 p-5 bg-[#2D4A73] text-white rounded-3xl shadow-xl shadow-blue-200 hover:bg-black transition-all border border-[#2D4A73]"
+                        >
+                            <FileText size={20} />
+                            <span className="text-[10px] font-black uppercase tracking-widest">Dispatch Manifest</span>
+                        </button>
+
+                        <button onClick={fetchDashboardData} className="p-5 bg-white rounded-3xl shadow-xl shadow-gray-200/50 hover:scale-105 transition-all text-[#2D4A73] border border-white">
+                            <RefreshCcw size={24} />
+                        </button>
+                    </div>
                 </header>
 
-                {/* --- Stock Alerts Widget --- */}
-                <StockAlerts />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+                    {[
+                        { label: 'Gross Revenue', value: `₹${stats.totalRevenue.toLocaleString()}`, icon: DollarSign, color: 'text-green-600' },
+                        { label: 'Pending Action', value: stats.pending, icon: Layers, color: 'text-amber-600' },
+                        { label: 'Fulfillment', value: `${stats.fulfillmentRate}%`, icon: CheckCircle, color: 'text-blue-600' }
+                    ].map((card, i) => (
+                        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }} key={i} className="bg-white p-8 rounded-[3rem] shadow-sm border border-gray-100 relative overflow-hidden group">
+                            <card.icon className={`absolute -right-4 -bottom-4 w-32 h-32 opacity-5 group-hover:scale-110 transition-transform ${card.color}`} />
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">{card.label}</p>
+                            <h3 className={`text-4xl font-black tracking-tighter ${card.color}`}>{card.value}</h3>
+                        </motion.div>
+                    ))}
+                </div>
 
-                <div className="bg-white rounded-[3rem] shadow-sm border border-gray-100 overflow-hidden">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="bg-gray-50/50 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">
-                                <th className="px-10 py-8">Order ID</th>
-                                <th className="px-10 py-8">Customer Detail</th>
-                                <th className="px-10 py-8">Total Amount</th>
-                                <th className="px-10 py-8">Fulfillment</th>
-                                <th className="px-10 py-8 text-right">Operations</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {orders.map((order) => (
-                                <tr key={order.orderId} className="hover:bg-gray-50/40 transition-colors group">
-                                    <td className="px-10 py-8 font-black text-[#2D4A73] text-lg tracking-tighter">#{order.orderId}</td>
-                                    <td className="px-10 py-8">
-                                        <div className="text-sm text-gray-800 font-bold">{order.userEmail}</div>
-                                        <div className="text-[10px] text-gray-400 uppercase font-bold">{new Date().toLocaleDateString()}</div>
-                                    </td>
-                                    <td className="px-10 py-8 font-black text-[#2D4A73] text-xl">₹{order.totalAmount}</td>
-                                    <td className="px-10 py-8">
-                                        <span className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusStyle(order.status)}`}>
-                                            {order.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-10 py-8">
-                                        <div className="flex justify-end gap-3">
-                                            {order.status === 'PENDING' && (
-                                                <button onClick={() => updateStatus(order.orderId, 'SHIPPED')} className="p-3 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-600 hover:text-white transition-all shadow-sm" title="Dispatch Order">
-                                                    <Truck size={20} />
-                                                </button>
-                                            )}
-                                            {order.status === 'SHIPPED' && (
-                                                <button onClick={() => updateStatus(order.orderId, 'DELIVERED')} className="p-3 bg-green-50 text-green-600 rounded-2xl hover:bg-green-600 hover:text-white transition-all shadow-sm" title="Confirm Delivery">
-                                                    <CheckCircle size={20} />
-                                                </button>
-                                            )}
-                                            <button className="p-3 bg-gray-50 text-gray-400 rounded-2xl hover:bg-gray-200 transition-all">
-                                                <ExternalLink size={20} />
-                                            </button>
-                                        </div>
-                                    </td>
+                <div className="bg-white rounded-[4rem] shadow-2xl shadow-gray-200/40 border border-white overflow-hidden">
+                    <div className="p-10 border-b border-gray-50 flex justify-between items-center">
+                        <h3 className="text-xl font-black text-[#2D4A73]">Recent Logistics</h3>
+                        <span className="px-4 py-1 bg-gray-100 rounded-full text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                            {orders.length} Total Sequences
+                        </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-50">
+                                    <th className="px-10 py-6">Reference</th>
+                                    <th className="px-10 py-6">Customer / Agent</th>
+                                    <th className="px-10 py-6">Value</th>
+                                    <th className="px-10 py-6">Status</th>
+                                    <th className="px-10 py-8 text-right">Operations</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                    {orders.length === 0 && (
-                        <div className="py-20 text-center">
-                            <Package className="mx-auto text-gray-200 mb-4" size={48} />
-                            <p className="text-gray-400 font-bold">No active orders found in database.</p>
-                        </div>
-                    )}
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {orders.map((order) => (
+                                    <tr key={order.orderId} className="hover:bg-blue-50/30 transition-colors group">
+                                        <td className="px-10 py-8 font-black text-[#2D4A73] text-lg">#{order.orderId}</td>
+                                        <td className="px-10 py-8">
+                                            <div className="text-sm text-gray-800 font-bold">{order.email}</div>
+                                            {order.deliveryAgentName && (
+                                                <div className="flex items-center gap-2 mt-2 p-2 bg-blue-50 rounded-xl inline-flex">
+                                                    <User size={12} className="text-blue-600" />
+                                                    <span className="text-[9px] font-black text-blue-600 uppercase">{order.deliveryAgentName}</span>
+                                                    <Phone size={10} className="text-gray-400 ml-1" />
+                                                    <span className="text-[9px] font-bold text-gray-400">{order.deliveryAgentPhone}</span>
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="px-10 py-8 font-black text-[#2D4A73] text-xl">₹{order.totalAmount}</td>
+                                        <td className="px-10 py-8">
+                                            <span className={`px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest border ${
+                                                order.status === 'DELIVERED' ? 'bg-green-50 text-green-600 border-green-100' :
+                                                order.status === 'SHIPPED' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                                                'bg-amber-50 text-amber-600 border-amber-100'
+                                            }`}>
+                                                {order.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-10 py-8">
+                                            <div className="flex justify-end gap-3">
+                                                {order.status === 'PENDING' && (
+                                                    <button onClick={() => handleDispatch(order.orderId)} className="p-4 bg-blue-600 text-white rounded-2xl hover:bg-black transition-all shadow-lg shadow-blue-200 flex items-center gap-2">
+                                                        <Truck size={18} />
+                                                        <span className="text-[9px] font-black uppercase">Dispatch</span>
+                                                    </button>
+                                                )}
+                                                {order.status === 'SHIPPED' && (
+                                                    <button onClick={() => handleDeliver(order.orderId)} className="p-4 bg-green-600 text-white rounded-2xl hover:bg-black transition-all shadow-lg shadow-green-200 flex items-center gap-2">
+                                                        <CheckCircle size={18} />
+                                                        <span className="text-[9px] font-black uppercase">Deliver</span>
+                                                    </button>
+                                                )}
+                                                <button className="p-4 bg-gray-100 text-gray-400 rounded-2xl hover:bg-white hover:text-[#2D4A73] border border-transparent hover:border-gray-200 transition-all">
+                                                    <ExternalLink size={20} />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>

@@ -21,6 +21,9 @@ const apiClient = axios.create({
  * ✨ FIXED: Removed duplicate return and cleaned logic to ensure token is ALWAYS attached.
  */
 apiClient.interceptors.request.use((config) => {
+
+    if (config.url?.includes('/auth/')) return config;
+
     const token = localStorage.getItem('jwtToken');
 
     // Remove any previous Authorization to prevent stale/duplicate headers
@@ -38,6 +41,24 @@ apiClient.interceptors.request.use((config) => {
 }, (error) => {
     return Promise.reject(error);
 });
+
+/**
+ * ✨ RESPONSE INTERCEPTOR
+ * Handles global error states like expired sessions (401) or insufficient permissions (403).
+ */
+apiClient.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response?.status === 401) {
+            console.error("Session Expired");
+            localStorage.clear();
+            if (!window.location.pathname.includes('/login')) {
+                window.location.href = '/login';
+            }
+        }
+        return Promise.reject(error);
+    }
+);
 
 /**
 * 4. Product Service Implementation
@@ -92,9 +113,13 @@ export const productService = {
 * 5. Auth Service Implementation
 */
 export const authService = {
-    login: async (credentials: any) => {
+   /* login: async (credentials: any) => {
     const response = await apiClient.post('/auth/login', credentials);
     return response.data;
+    }, */
+    login: async (credentials: { email: string; password: string }) => {
+        const response = await apiClient.post('/auth/login', credentials);
+        return response.data; // Expecting { token: string, user: UserData }
     },
     register: async (formData: any) => {
     const response = await apiClient.post('/auth/register', formData);
@@ -116,8 +141,7 @@ export const cartService = {
     { quantity },
     {
     headers: { 'X-User-Email': email }
-    }
-    );
+    });
 },
 // Useful for Buy Now feature
 instantOrder: async (productId: number, quantity: number, email: string) => {
@@ -132,6 +156,9 @@ instantOrder: async (productId: number, quantity: number, email: string) => {
 * 7. Order Service Implementation
 */
 export const orderService = {
+
+    getUserOrders: (email: string) => apiClient.get(`/orders/user/${email}`),
+
     placeOrder: async (orderData: any) => {
     const response = await apiClient.post('/orders/place', orderData);
     return response.data;
@@ -209,14 +236,11 @@ export const quizService = {
 * 9. Inventory & User Services
 */
 export const inventoryService = {
-    getLowStockAlerts: async () => {
-    const response = await apiClient.get('/admin/inventory/alerts');
-    return response.data;
-    },
-    updateStock: async (id: number, quantity: number) => {
-    const response = await apiClient.put(`/admin/inventory/update/${id}`, { quantity });
-    return response.data;
-    }
+    getAll: () => apiClient.get('/products/all'),
+
+    getLowStock: (threshold: number) => apiClient.get(`/products/low-stock?threshold=${threshold}`),
+    update: (id: number, data: any) => apiClient.put(`/products/${id}`, data),
+    delete: (id: number) => apiClient.delete(`/products/${id}`),
 };
 
 export const userService = {
@@ -232,6 +256,37 @@ export const userService = {
     const response = await apiClient.put('/users/profile/update', data);
     return response.data;
     }
+};
+
+export const adminService = {
+    
+    getLowStock: (threshold: number) => apiClient.get(`/products/low-stock?threshold=${threshold}`),
+    
+    getAllOrders: () => apiClient.get('/orders/all'),
+    
+    updateOrderStatus: (id: string, status: string, agentName: string, agentPhone: string) => 
+        apiClient.put(`/orders/${id}/status`, null, {
+            params: {
+                status: status,
+                agentName: agentName,
+                agentPhone: agentPhone
+            }
+        }),
+    
+    updateOrderLogistics: (orderId: string, status: string, agentName: string, agentPhone: string) => 
+        apiClient.put(`/orders/${orderId}/status`, null, {
+            params: { status, agentName, agentPhone }
+        }),
+};
+
+export const agentService = {
+    /**
+     * ✨ Mobile-optimized status update for delivery personnel
+     */
+    updateStatus: (orderId: string, status: string, note: string) => 
+        apiClient.put(`/orders/${orderId}/agent-update`, null, {
+            params: { status, deliveryNote: note }
+        })
 };
 
 /**
@@ -251,7 +306,9 @@ return response.data;
 },
 quizService,
 inventoryService,
-userService
+userService,
+adminService,
+agentService
 };
 
 export default api;

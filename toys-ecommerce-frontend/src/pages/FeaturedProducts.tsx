@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { productService } from '../services/api';
 import ProductCard from '../components/ProductCard';
-import EmptyState from './EmptyState'; 
+import EmptyState from '../components/EmptyState'; 
 import { motion, AnimatePresence } from 'framer-motion';
 import { SlidersHorizontal, ChevronDown, X } from 'lucide-react';
 import type { Product } from '../types/Product';

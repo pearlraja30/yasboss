@@ -1,190 +1,239 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { Edit3, Trash2, Eye, Plus, X, Save, Search, Star, Package, Info, Tag, Ruler } from 'lucide-react';
+import { 
+    Edit3, Trash2, Eye, Plus, X, Save, Search, 
+    Package, Layers, Activity, Tag 
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
+import { inventoryService } from '../../services/api'; 
 
 const Inventory: React.FC = () => {
     const [products, setProducts] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedProduct, setSelectedProduct] = useState<any>(null);
     const [isEditMode, setIsEditMode] = useState(false);
+    const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
 
-    useEffect(() => { fetchInventory(); }, []);
-
     const fetchInventory = async () => {
+        const token = localStorage.getItem('jwtToken');
+        
+        if (!token || token === "null") {
+            toast.error("Session expired. Please login as Admin.");
+            navigate('/login');
+            return;
+        }
+
         try {
-            // Updated endpoint to match standard controller naming
-            const res = await axios.get('http://localhost:8080/api/products');
+            setLoading(true);
+            // ✨ Updated to use the correct /all endpoint as per backend controller
+            const res = await inventoryService.getAll();
             setProducts(res.data);
-        } catch (err) {
-            toast.error("Failed to fetch database records.");
+        } catch (err: any) {
+            console.error("Inventory Fetch Error:", err);
+            if (err.response?.status === 403) {
+                toast.error("Access Denied: Admin permissions required.");
+            } else {
+                toast.error("Failed to sync with PostgreSQL database.");
+            }
+        } finally {
+            setLoading(false);
         }
     };
 
+    useEffect(() => { fetchInventory(); }, []);
+
     const handleDelete = async (id: number) => {
-        if (window.confirm("⚠️ This will permanently remove the toy from PostgreSQL. Continue?")) {
+        if (window.confirm("⚠️ Permanently delete this toy from PostgreSQL?")) {
             try {
-                await axios.delete(`http://localhost:8080/api/products/${id}`);
-                toast.success("Product Deleted Successfully");
+                await inventoryService.delete(id);
+                toast.success("Database entry removed");
                 fetchInventory();
-            } catch (err) { toast.error("Delete failed."); }
+            } catch (err) { 
+                toast.error("Delete failed. Check server permissions."); 
+            }
         }
     };
 
     const handleSaveUpdate = async () => {
         try {
-            // Fixed mapping to standard PUT endpoint
-            await axios.put(`http://localhost:8080/api/products/${selectedProduct.id}`, selectedProduct);
-            toast.success("Database Updated Successfully");
+            await inventoryService.update(selectedProduct.id, selectedProduct);
+            toast.success("Master Record Synchronized");
             setSelectedProduct(null);
             fetchInventory();
-        } catch (err) { toast.error("Update Failed. Check server logs."); }
+        } catch (err) { 
+            toast.error("Update failed. Check field constraints."); 
+        }
     };
 
     const filteredProducts = products.filter(p => 
-        p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        p.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.brand?.toLowerCase().includes(searchTerm.toLowerCase())
+        (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+        (p.sku || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.brand || '').toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    if (loading) return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+            <Activity className="animate-spin text-[#2D4A73] mb-4" size={48} />
+            <h2 className="text-xl font-black text-[#2D4A73] uppercase tracking-tighter">Syncing Catalog...</h2>
+        </div>
     );
 
     return (
-        <div className="p-8 max-w-7xl mx-auto bg-[#F8FAFC] min-h-screen">
-            {/* Header with Search & New Product Logic */}
-            <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+        <div className="p-4 md:p-12 max-w-7xl mx-auto bg-[#F8FAFC] min-h-screen">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-12 gap-6">
                 <div>
-                    <h1 className="text-4xl font-black text-[#2D4A73] tracking-tight">Inventory Control</h1>
-                    <p className="text-gray-400 text-sm mt-1 font-medium uppercase tracking-widest">Master Stock & SKU Management</p>
+                    <div className="flex items-center gap-3 mb-2">
+                        <Layers className="text-pink-600" size={20} />
+                        <span className="text-[10px] font-black text-pink-600 uppercase tracking-[0.3em]">Logistics Hub</span>
+                    </div>
+                    <h1 className="text-5xl font-black text-[#2D4A73] tracking-tighter leading-none">Inventory<br/>Control</h1>
                 </div>
-                <div className="flex gap-4 w-full md:w-auto">
-                    <div className="relative flex-1 md:w-80">
-                        <Search className="absolute left-4 top-4 text-gray-300" size={18} />
+                
+                <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
+                    <div className="relative flex-1 sm:w-80">
+                        <Search className="absolute left-5 top-5 text-gray-300" size={20} />
                         <input 
-                            placeholder="Search name, SKU, or brand..." 
-                            className="pl-12 pr-4 py-4 border-none rounded-2xl w-full outline-none focus:ring-4 ring-blue-50 bg-white shadow-sm font-bold"
+                            placeholder="Find SKU, Name or Brand..." 
+                            className="pl-14 pr-6 py-5 border-none rounded-[2rem] w-full outline-none focus:ring-4 ring-blue-50 bg-white shadow-xl shadow-gray-200/40 font-bold text-[#2D4A73]"
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
                     <button 
                         onClick={() => navigate('/admin/add-product')}
-                        className="bg-[#2D4A73] text-white px-8 py-4 rounded-2xl font-black flex items-center gap-2 hover:bg-[#1e334f] transition-all shadow-xl shadow-blue-100"
+                        className="bg-[#2D4A73] text-white px-10 py-5 rounded-[2rem] font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-2xl shadow-blue-200 active:scale-95"
                     >
-                        <Plus size={20}/> Add New Toy
+                        <Plus size={24}/> New Unit
                     </button>
                 </div>
             </div>
 
-            {/* Advanced Table UI */}
-            <div className="bg-white rounded-[3rem] shadow-sm border border-gray-100 overflow-hidden">
-                <table className="w-full text-left">
-                    <thead className="bg-gray-50/50 border-b border-gray-100">
-                        <tr className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
-                            <th className="p-6">Toy Details</th>
-                            <th className="p-6">SKU & Brand</th>
-                            <th className="p-6">Inventory Status</th>
-                            <th className="p-6">Pricing</th>
-                            <th className="p-6 text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                        {filteredProducts.map(p => (
-                            <tr key={p.id} className="hover:bg-blue-50/20 transition-all duration-300 group">
-                                <td className="p-6">
-                                    <div className="flex items-center gap-5">
-                                        <div className="w-16 h-16 bg-gray-50 border border-gray-100 rounded-[1.5rem] flex items-center justify-center p-2 group-hover:rotate-3 transition-transform overflow-hidden">
-                                            {/* Fix: Ensure imageUrl is correctly prefixed if stored as a relative path */}
-                                            <img src={p.imageUrl} className="object-contain w-full h-full" alt="" />
-                                        </div>
-                                        <div>
-                                            <div className="font-black text-[#2D4A73] text-base">{p.name}</div>
-                                            <div className="text-[10px] text-pink-500 font-black uppercase tracking-widest">{p.category}</div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="p-6">
-                                    <div className="text-sm font-bold text-gray-700">{p.sku || 'NO-SKU'}</div>
-                                    <div className="text-[10px] text-blue-500 font-black uppercase tracking-tighter">{p.brand || 'No Brand'}</div>
-                                </td>
-                                <td className="p-6">
-                                    <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter border ${p.stock < 10 ? 'bg-red-50 text-red-500 border-red-100' : 'bg-green-50 text-green-600 border-green-100'}`}>
-                                        <Package size={12} /> {p.stock} Units
-                                    </div>
-                                    {p.isFeatured && <div className="text-[9px] text-amber-500 font-black uppercase mt-1">★ Featured Toy</div>}
-                                </td>
-                                <td className="p-6">
-                                    <div className="font-black text-[#2D4A73] text-lg">₹{p.sellingPrice}</div>
-                                    <div className="text-[10px] text-gray-300 line-through">MRP ₹{p.mrpPrice}</div>
-                                </td>
-                                <td className="p-6 text-right">
-                                    <div className="flex justify-end gap-2">
-                                        <button onClick={() => { setSelectedProduct(p); setIsEditMode(false); }} className="p-3 text-blue-500 hover:bg-blue-50 rounded-2xl transition-all shadow-sm bg-white"><Eye size={18}/></button>
-                                        <button onClick={() => { setSelectedProduct(p); setIsEditMode(true); }} className="p-3 text-emerald-500 hover:bg-emerald-50 rounded-2xl transition-all shadow-sm bg-white"><Edit3 size={18}/></button>
-                                        <button onClick={() => handleDelete(p.id)} className="p-3 text-rose-400 hover:bg-rose-50 rounded-2xl transition-all shadow-sm bg-white"><Trash2 size={18}/></button>
-                                    </div>
-                                </td>
+            <div className="bg-white rounded-[4rem] shadow-2xl shadow-gray-200/30 border border-white overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead className="bg-gray-50/50 border-b border-gray-100">
+                            <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                <th className="px-10 py-8">Product Intelligence</th>
+                                <th className="px-10 py-8">Identification</th>
+                                <th className="px-10 py-8">Stock Level</th>
+                                <th className="px-10 py-8">Valuation</th>
+                                <th className="px-10 py-8 text-right">Operations</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {filteredProducts.map(p => (
+                                <tr key={p.id} className="hover:bg-blue-50/30 transition-colors group">
+                                    <td className="px-10 py-8">
+                                        <div className="flex items-center gap-6">
+                                            <div className="w-20 h-20 bg-gray-50 rounded-[2rem] flex items-center justify-center p-3 group-hover:scale-110 transition-transform shadow-inner overflow-hidden">
+                                                <img src={p.imageUrl} className="object-contain w-full h-full drop-shadow-lg" alt="" />
+                                            </div>
+                                            <div>
+                                                <div className="font-black text-[#2D4A73] text-lg leading-tight">{p.name}</div>
+                                                <div className="text-[10px] text-pink-500 font-black uppercase mt-1">{p.category}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-10 py-8">
+                                        <div className="text-sm font-black text-[#2D4A73]">{p.sku || 'UNASSIGNED'}</div>
+                                        <div className="text-[10px] text-blue-500 font-black uppercase tracking-tighter">{p.brand}</div>
+                                    </td>
+                                    <td className="px-10 py-8">
+                                        <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-[10px] font-black uppercase border ${p.stock < 10 ? 'bg-red-50 text-red-500 border-red-100 animate-pulse' : 'bg-green-50 text-green-600 border-green-100'}`}>
+                                            <Package size={14} /> {p.stock} Units
+                                        </div>
+                                    </td>
+                                    <td className="px-10 py-8">
+                                        <div className="font-black text-[#2D4A73] text-2xl tracking-tighter">₹{p.sellingPrice}</div>
+                                        <div className="text-[10px] text-gray-300 font-bold line-through">MRP ₹{p.mrpPrice}</div>
+                                    </td>
+                                    <td className="px-10 py-8 text-right">
+                                        <div className="flex justify-end gap-3">
+                                            <button onClick={() => { setSelectedProduct(p); setIsEditMode(false); }} className="p-4 text-blue-500 bg-blue-50/50 hover:bg-blue-600 hover:text-white rounded-2xl transition-all shadow-sm"><Eye size={20}/></button>
+                                            <button onClick={() => { setSelectedProduct(p); setIsEditMode(true); }} className="p-4 text-emerald-500 bg-emerald-50/50 hover:bg-emerald-600 hover:text-white rounded-2xl transition-all shadow-sm"><Edit3 size={20}/></button>
+                                            <button onClick={() => handleDelete(p.id)} className="p-4 text-rose-400 bg-rose-50/50 hover:bg-rose-600 hover:text-white rounded-2xl transition-all shadow-sm"><Trash2 size={20}/></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            {/* --- SLIDE-OVER DETAIL MODAL --- */}
-            {selectedProduct && (
-                <div className="fixed inset-0 bg-[#2D4A73]/40 backdrop-blur-lg z-50 flex justify-end">
-                    <div className="bg-white w-full max-w-2xl h-full shadow-2xl p-12 overflow-y-auto border-l border-gray-100">
-                        <div className="flex justify-between items-center mb-10">
-                            <div>
-                                <h2 className="text-4xl font-black text-[#2D4A73] tracking-tighter">{isEditMode ? 'Edit Toy Details' : 'Product Technicals'}</h2>
-                                <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Catalog Item #{selectedProduct.id}</p>
-                            </div>
-                            <button onClick={() => setSelectedProduct(null)} className="p-4 bg-gray-50 hover:bg-gray-100 rounded-3xl transition-colors"><X/></button>
-                        </div>
-
-                        <div className="space-y-10">
-                            <div className="relative group bg-gray-50 rounded-[3rem] p-12 flex items-center justify-center border border-gray-100">
-                                <img src={selectedProduct.imageUrl} className="max-h-64 object-contain drop-shadow-2xl" alt="" />
-                            </div>
+            <AnimatePresence>
+                {selectedProduct && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-[#2D4A73]/60 backdrop-blur-md z-50 flex justify-end">
+                        <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25 }} className="bg-white w-full max-w-2xl h-full shadow-2xl p-8 md:p-16 overflow-y-auto relative">
+                            <button onClick={() => setSelectedProduct(null)} className="absolute top-8 right-8 p-4 bg-gray-50 hover:bg-gray-200 rounded-3xl transition-colors"><X/></button>
                             
-                            <div className="grid grid-cols-2 gap-8">
-                                <div className="col-span-2">
-                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2">Display Name</label>
-                                    <input disabled={!isEditMode} className="w-full mt-2 p-5 bg-gray-50 border-none rounded-2xl outline-none font-bold text-[#2D4A73]" value={selectedProduct.name} onChange={e => setSelectedProduct({...selectedProduct, name: e.target.value})} />
+                            <h2 className="text-5xl font-black text-[#2D4A73] tracking-tighter mb-2">{isEditMode ? 'Modify Toy' : 'Technicals'}</h2>
+                            <p className="text-gray-400 text-xs font-black uppercase tracking-[0.3em] mb-12">Serial SKU: {selectedProduct.sku || 'N/A'}</p>
+
+                            <div className="space-y-12">
+                                <div className="bg-gray-50 rounded-[4rem] p-16 flex items-center justify-center border border-gray-100 shadow-inner">
+                                    <img src={selectedProduct.imageUrl || ''} className="max-h-72 object-contain drop-shadow-2xl" alt="" />
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    <div className="md:col-span-2">
+                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-4">Full Product Name</label>
+                                        <div className="relative mt-2">
+                                            {/* ✨ Sanitized value with fallback to empty string */}
+                                            <input 
+                                                disabled={!isEditMode} 
+                                                className="w-full p-6 bg-gray-50 rounded-3xl outline-none font-black text-2xl text-[#2D4A73] disabled:opacity-70" 
+                                                value={selectedProduct.name || ''} 
+                                                onChange={e => setSelectedProduct({...selectedProduct, name: e.target.value})} 
+                                            />
+                                            <Tag className="absolute right-6 top-6 text-gray-200" size={24} />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-4">Stock Level</label>
+                                        <input 
+                                            type="number" 
+                                            disabled={!isEditMode} 
+                                            className="w-full mt-2 p-6 bg-gray-50 rounded-3xl outline-none font-black text-[#2D4A73]" 
+                                            value={selectedProduct.stock ?? 0} 
+                                            onChange={e => setSelectedProduct({...selectedProduct, stock: parseInt(e.target.value) || 0})} 
+                                        />
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-4">Selling Price (₹)</label>
+                                        <input 
+                                            type="number" 
+                                            disabled={!isEditMode} 
+                                            className="w-full mt-2 p-6 bg-gray-50 rounded-3xl outline-none font-black text-emerald-600" 
+                                            value={selectedProduct.sellingPrice ?? 0} 
+                                            onChange={e => setSelectedProduct({...selectedProduct, sellingPrice: parseFloat(e.target.value) || 0})} 
+                                        />
+                                    </div>
+
+                                    <div className="md:col-span-2">
+                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-4">Database Description</label>
+                                        <textarea 
+                                            disabled={!isEditMode} 
+                                            className="w-full mt-2 p-6 bg-gray-50 rounded-[2.5rem] outline-none font-bold text-gray-600 h-40 resize-none" 
+                                            value={selectedProduct.detailedDescription || ''} 
+                                            onChange={e => setSelectedProduct({...selectedProduct, detailedDescription: e.target.value})} 
+                                        />
+                                    </div>
                                 </div>
 
-                                <div>
-                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2">SKU Code</label>
-                                    <input disabled={!isEditMode} className="w-full mt-2 p-5 bg-gray-50 border-none rounded-2xl outline-none font-bold text-blue-600" value={selectedProduct.sku} onChange={e => setSelectedProduct({...selectedProduct, sku: e.target.value})} />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2">Brand</label>
-                                    <input disabled={!isEditMode} className="w-full mt-2 p-5 bg-gray-50 border-none rounded-2xl outline-none font-bold" value={selectedProduct.brand} onChange={e => setSelectedProduct({...selectedProduct, brand: e.target.value})} />
-                                </div>
-
-                                <div>
-                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2">Selling Price (₹)</label>
-                                    <input type="number" disabled={!isEditMode} className="w-full mt-2 p-5 bg-gray-50 border-none rounded-2xl outline-none font-black text-green-600" value={selectedProduct.sellingPrice} onChange={e => setSelectedProduct({...selectedProduct, sellingPrice: e.target.value})} />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2">Current Stock</label>
-                                    <input type="number" disabled={!isEditMode} className="w-full mt-2 p-5 bg-gray-50 border-none rounded-2xl outline-none font-black" value={selectedProduct.stock} onChange={e => setSelectedProduct({...selectedProduct, stock: e.target.value})} />
-                                </div>
-
-                                <div className="col-span-2">
-                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2">Technical Description</label>
-                                    <textarea disabled={!isEditMode} className="w-full mt-2 p-5 bg-gray-50 border-none rounded-[2rem] h-44 outline-none leading-relaxed font-medium text-gray-600" value={selectedProduct.detailedDescription} onChange={e => setSelectedProduct({...selectedProduct, detailedDescription: e.target.value})} />
-                                </div>
+                                {isEditMode && (
+                                    <button onClick={handleSaveUpdate} className="w-full bg-[#2D4A73] text-white py-8 rounded-[3rem] font-black text-xl hover:bg-black transition-all shadow-2xl shadow-blue-200 mt-6 flex items-center justify-center gap-3">
+                                        <Save size={24} /> UPDATE REPOSITORY
+                                    </button>
+                                )}
                             </div>
-
-                            {isEditMode && (
-                                <button onClick={handleSaveUpdate} className="w-full bg-[#2D4A73] text-white py-6 rounded-[2.5rem] font-black text-xl flex items-center justify-center gap-3 hover:bg-black transition-all shadow-2xl shadow-blue-200">
-                                    <Save size={24}/> UPDATE MASTER RECORD
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

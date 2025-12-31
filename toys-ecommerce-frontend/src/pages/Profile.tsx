@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { User, ShoppingBag, MapPin, Trophy, History, Loader2, Gamepad2 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -12,38 +12,53 @@ const Profile: React.FC = () => {
     const [userData, setUserData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        // ✨ THE FIX: Check for token BEFORE fetching
+    /**
+     * ✨ HARDENED PROFILE FETCH
+     * Uses the same validation logic as App.tsx to avoid 403 errors from "null" strings.
+     */
+    const fetchLatestProfile = useCallback(async () => {
         const token = localStorage.getItem('jwtToken');
-        if (!token) {
-            console.warn("No token found, redirecting to login...");
+        
+        // 🛡️ Guard against invalid/ghost tokens
+        const isValidToken = token && 
+                            token !== "null" && 
+                            token !== "undefined" && 
+                            token.length > 20;
+
+        if (!isValidToken) {
+            console.warn("🛡️ Profile: Invalid token detected. Redirecting to login.");
+            setLoading(false);
             navigate('/login', { replace: true });
             return;
         }
-        fetchLatestProfile();
-    }, [navigate]);
 
-    const fetchLatestProfile = async () => {
         try {
             setLoading(true);
             const data = await api.userService.getProfile();
             setUserData(data);
             
+            // Sync local storage with fresh DB data
             localStorage.setItem('user', JSON.stringify(data));
             window.dispatchEvent(new Event("storage"));
         } catch (err: any) {
-            console.error("Profile Sync Error:", err);
-            // If session is actually invalid, clear and redirect
+            console.error("❌ Profile Sync Error:", err);
+            
+            // Handle expired or rejected tokens
             if (err.response?.status === 403 || err.response?.status === 401) {
                 localStorage.removeItem('jwtToken');
                 localStorage.removeItem('user');
+                window.dispatchEvent(new Event("storage")); // Notify Header/App
                 toast.error("Session expired. Please login again.");
                 navigate('/login', { replace: true });
             }
         } finally {
             setLoading(false);
         }
-    };
+    }, [navigate]);
+
+    useEffect(() => {
+        fetchLatestProfile();
+    }, [fetchLatestProfile]);
 
     const navLinks = [
         { name: 'Order History', icon: ShoppingBag, to: 'orders' },
@@ -56,8 +71,11 @@ const Profile: React.FC = () => {
     const isBaseProfilePath = location.pathname === '/profile' || location.pathname === '/profile/';
 
     if (loading) return (
-        <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]">
-            <Loader2 className="animate-spin text-[#2D4A73]" size={48} />
+        <div className="min-h-screen flex flex-col items-center justify-center bg-[#F8F9FA]">
+            <Loader2 className="animate-spin text-[#2D4A73] mb-4" size={48} />
+            <p className="text-[10px] font-black text-[#2D4A73] uppercase tracking-[0.3em] animate-pulse">
+                Synchronizing Profile...
+            </p>
         </div>
     );
 
@@ -98,23 +116,23 @@ const Profile: React.FC = () => {
                             key={location.pathname}
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="bg-white p-10 rounded-[3rem] shadow-sm border border-gray-100 min-h-[600px]"
+                            className="bg-white p-10 rounded-[3rem] shadow-sm border border-gray-100 min-h-[600px] relative overflow-hidden"
                         >
                             {isBaseProfilePath ? (
                                 <div className="flex flex-col items-center justify-center h-[500px] text-center">
-                                    <div className="w-24 h-24 bg-gray-50 text-[#2D4A73] rounded-full flex items-center justify-center mb-6">
+                                    <div className="w-24 h-24 bg-gray-50 text-[#2D4A73] rounded-full flex items-center justify-center mb-6 border border-gray-100 shadow-inner">
                                         <History size={40} />
                                     </div>
-                                    <h3 className="text-3xl font-black text-[#2D4A73]">Ready for an adventure?</h3>
+                                    <h3 className="text-3xl font-black text-[#2D4A73] tracking-tighter">Ready for adventure?</h3>
                                     <p className="text-gray-400 mt-3 font-bold uppercase text-[10px] tracking-[0.2em] max-w-xs mx-auto">
                                         Check your recent orders or track your points to unlock new rewards!
                                     </p>
                                     
                                     <div className="mt-10 flex gap-4">
-                                        <div className="px-6 py-3 bg-gray-50 rounded-2xl border border-gray-100">
-                                            <span className="text-[10px] font-black text-gray-400 block uppercase mb-1">Shipping Status</span>
-                                            <span className="text-sm font-bold text-[#2D4A73]">
-                                                {userData?.address ? 'Verified ✓' : 'Address Required ✗'}
+                                        <div className="px-6 py-3 bg-blue-50/50 rounded-2xl border border-blue-100">
+                                            <span className="text-[10px] font-black text-blue-400 block uppercase mb-1">Identity Check</span>
+                                            <span className="text-sm font-black text-[#2D4A73]">
+                                                {userData?.role === 'ADMIN' ? 'Commander Mode 🛡️' : 'Explorer Status 🚀'}
                                             </span>
                                         </div>
                                     </div>

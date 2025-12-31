@@ -20,61 +20,61 @@ const Login: React.FC = () => {
     
     const navigate = useNavigate();
 
+    /**
+     * ✨ Hardened Authentication Handler
+     * Fixes the routing loop by ensuring storage and state sync are complete.
+     */
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
 
         try {
-            const authData = isLogin 
+            const authPayload = isLogin 
                 ? { email: formData.email.trim(), password: formData.password }
                 : { ...formData, email: formData.email.trim() };
 
+            // 1. Await the API response
             const response = isLogin 
-                ? await authService.login(authData) 
-                : await authService.register(authData);
+                ? await authService.login(authPayload) 
+                : await authService.register(authPayload);
             
             if (response && response.token) {
-                // ✨ STEP 1: Immediate Storage Lock
-                // We save these BEFORE calling any other service to ensure 
-                // the API Interceptor has the token for the Profile call.
+                // 2. ✨ THE CRITICAL SYNC FIX
+                // Write to localStorage immediately.
                 localStorage.setItem('jwtToken', response.token);
-                localStorage.setItem('userEmail', formData.email.trim());
+                localStorage.setItem('user', JSON.stringify(response.user));
+                //localStorage.setItem('userEmail', formData.email.trim());
+                localStorage.setItem('userEmail', response.user.email);
                 
-                // ✨ STEP 2: Profile Sync
-                try {
-                    const fullProfile = await userService.getProfile();
-                    
-                    // Finalize storage with verified data from DB
-                    localStorage.setItem('user', JSON.stringify(fullProfile));
-                    localStorage.setItem('userEmail', fullProfile.email);
-                    
-                    // Force a storage event to wake up the Header/App listeners
-                    window.dispatchEvent(new Event("storage"));
-                    
-                    toast.success(`Welcome back, ${fullProfile.fullName}!`);
+                // 3. ✨ BROADCAST TO HEADERS
+                // This ensures the "Sign In" text changes to the User Icon immediately.
+                window.dispatchEvent(new Event("user-login"));
+                window.dispatchEvent(new Event("storage"));
 
-                    // ✨ STEP 3: Controlled Navigation
-                    // Use window.location for Admin to break any stale state loops
-                    setTimeout(() => {
-                        if (fullProfile.role === 'ADMIN') {
-                            window.location.href = '/admin/orders'; // Force reload for Admin
-                        } else {
-                            navigate('/profile', { replace: true }); // 'replace' stops back-button loops
-                        }
-                    }, 100);
-                } catch (profileErr) {
-                    console.error("Profile sync failed:", profileErr);
-                    // Fallback: proceed to profile even if full data isn't synced yet
+                // 4. Fetch the profile to determine the role
+                const fullProfile = await userService.getProfile();
+                localStorage.setItem('user', JSON.stringify(fullProfile));
+
+                toast.success(`Welcome, ${fullProfile.fullName}!`);
+
+                // 5. ✨ FORCED ROUTING
+                // Check if there was a previous page the user wanted to visit
+                const redirectTo = localStorage.getItem('redirectAfterLogin');
+
+                if (fullProfile.role === 'ADMIN') {
+                    // Admins get a hard reload to clear any guest session data
+                    window.location.href = '/admin/orders';
+                } else if (redirectTo) {
+                    localStorage.removeItem('redirectAfterLogin');
+                    navigate(redirectTo, { replace: true });
+                } else {
+                    // Standard users go to their profile
                     navigate('/profile', { replace: true });
                 }
-            } else {
-                throw new Error("Invalid response from server");
             }
-
         } catch (err: any) {
-            console.error("Auth Error:", err);
-            const errorMsg = err.response?.data?.message || "Login failed. Please check credentials.";
-            toast.error(errorMsg);
+            console.error("Login failed:", err);
+            toast.error("Invalid email or password.");
         } finally {
             setLoading(false);
         }

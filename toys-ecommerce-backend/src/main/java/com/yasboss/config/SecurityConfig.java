@@ -52,28 +52,34 @@ public class SecurityConfig {
                 // Public Endpoints
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/products/filter/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                 .requestMatchers("/api/categories/**").permitAll()
+                 .requestMatchers("/api/products/filter/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
 
                 // This fixes the 403 errors on age-0-2.jpg, etc.
                 .requestMatchers("/uploads/**", "/images/**", "/static/**").permitAll()
                 .requestMatchers("/process-payment").permitAll()
 
+                 // Admin Endpoints
+                .requestMatchers(HttpMethod.GET, "/api/products").hasRole("ADMIN")
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/products/**").hasRole("ADMIN")
+                .requestMatchers("/api/orders/user/**").hasAnyRole("CUSTOMER", "ADMIN")
+                .requestMatchers("/api/orders/**").hasRole("ADMIN")
+                .requestMatchers("/api/orders/all").hasRole("ADMIN")
+                .requestMatchers("/api/users/leaderboard").hasAnyRole("CUSTOMER","ADMIN")
+                .requestMatchers("/api/products/add", "/api/products/update/**", "/api/products/delete/**").hasRole("ADMIN")
+                
                 // Protected Endpoints
                 .requestMatchers("/api/quiz/**", "/api/rewards/**").authenticated()
                 .requestMatchers("/api/orders/**").authenticated()
-                .requestMatchers("/api/orders/user/**").authenticated()
+               // .requestMatchers("/api/orders/user/**").authenticated()
                 .requestMatchers("/api/users/profile/**").authenticated()
                 .requestMatchers("/api/cart/**").authenticated()
                 .requestMatchers("/api/rewards/**").authenticated()
-                // Admin Endpoints
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                .requestMatchers("/api/products/**").hasAnyRole("ADMIN")
-                .requestMatchers("/api/orders/**").hasRole("ADMIN")
-                .requestMatchers("/api/orders/all").hasRole("ADMIN")
-                .requestMatchers("/api/products/add", "/api/products/update/**", "/api/products/delete/**").hasRole("ADMIN")
-                
+
+               
+               
                 .anyRequest().authenticated()
             )
             // Add your custom JWT filter before the standard authentication filter
