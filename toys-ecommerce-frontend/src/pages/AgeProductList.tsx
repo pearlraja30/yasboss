@@ -15,6 +15,7 @@ const AgeProductList = () => {
                 setLoading(true);
                 const res = await axios.get(`http://localhost:8080/api/products/age/${ageId}`);
                 setProducts(res.data);
+                console.log("Fetched products for age range", ageId, res.data);
             } catch (err) {
                 console.error("Failed to load products for age range", ageId);
             } finally {

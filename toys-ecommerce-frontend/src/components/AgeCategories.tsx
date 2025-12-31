@@ -7,10 +7,10 @@ const AgeCategories: React.FC = () => {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     const categories = [
-        { id: '0-2-years', label: '0-2 YEARS', image: '/images/products/age-0-2.jpg' },
-        { id: '2-4-years', label: '2-4 YEARS', image: '/images/products/age-2-4.jpg' },
-        { id: '4-6-years', label: '4-6 YEARS', image: '/images/products/age-4-6.jpg' },
-        { id: '6-years', label: '6-8 YEARS', image: '/images/products/age-6.jpg' }
+        { id: '0-2', label: '0-2 YEARS', image: '/images/products/age-0-2.jpg' },
+        { id: '2-4', label: '2-4 YEARS', image: '/images/products/age-2-4.jpg' },
+        { id: '4-6', label: '4-6 YEARS', image: '/images/products/age-4-6.jpg' },
+        { id: '6+', label: '6-8 YEARS', image: '/images/products/age-6.jpg' }
     ];
 
     // Function to handle horizontal scrolling
