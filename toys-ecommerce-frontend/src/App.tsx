@@ -19,6 +19,7 @@ import FeaturedProducts from './pages/FeaturedProducts';
 import AgeProductList from './pages/AgeProductList';
 import AboutUs from './pages/AboutUs';
 import HelpCenter from './pages/HelpCenter';
+import Privacy from './pages/Privacy'; // ✨ NEW: Import the Privacy page
 
 // Auth & User Pages
 import Login from './pages/Login';
@@ -48,6 +49,8 @@ import NotFound from './pages/NotFound';
 import ProductListing from './components/ProductListing';
 import Payment from './components/Payment';
 import LogisticsSummary from './components/admin/LogisticsSummary';
+import LogisticsTracker from './components/LogisticsTracker';
+import TrackingPage from './pages/admin/TrackingPage';
 
 // 🛠️ CUSTOMER LAYOUT WRAPPER
 const CustomerLayout = () => (
@@ -61,6 +64,12 @@ const CustomerLayout = () => (
     </>
 );
 
+// 🛡️ PROTECTED ROUTE GUARD
+const ProtectedRoute = ({ token, children }: { token: string | null, children: React.ReactNode }) => {
+    if (!token) return <Navigate to="/login" replace />;
+    return <>{children}</>;
+};
+
 const CompareContainer = () => {
     const { compareList, removeFromCompare, clearCompare } = useCompare();
     if (compareList.length === 0) return null;
@@ -68,13 +77,8 @@ const CompareContainer = () => {
 };
 
 const App: React.FC = () => {
-    // ✨ CHANGE: Use state for token to make the routes reactive
     const [token, setToken] = useState<string | null>(localStorage.getItem('jwtToken'));
 
-    /**
-     * ✨ Robust Token Validation
-     * Handles 'ghost' tokens and stringified nulls.
-     */
     const validateToken = useCallback((t: string | null) => {
         if (!t || t === "null" || t === "undefined" || t.trim() === "" || t.length < 20) {
             return null;
@@ -82,10 +86,6 @@ const App: React.FC = () => {
         return t;
     }, []);
 
-    /**
-     * ✨ Auth Sync Effect
-     * Listens for the 'user-login' event from Login.tsx to unlock routes instantly.
-     */
     useEffect(() => {
         const syncAuth = () => {
             const currentToken = localStorage.getItem('jwtToken');
@@ -93,7 +93,7 @@ const App: React.FC = () => {
         };
 
         window.addEventListener('user-login', syncAuth);
-        window.addEventListener('storage', syncAuth); // Handles login across multiple tabs
+        window.addEventListener('storage', syncAuth);
         
         return () => {
             window.removeEventListener('user-login', syncAuth);
@@ -108,7 +108,6 @@ const App: React.FC = () => {
             <Router>
                 <div className="flex flex-col min-h-screen bg-gray-50 w-full">
                     <Routes>
-                        {/* 🛒 SHOPPER ROUTES (With Header/Footer) */}
                         <Route element={<CustomerLayout />}>
                             <Route path="/" element={<Home />} />
                             <Route path="/product/:id" element={<ProductDetail />} />
@@ -120,26 +119,28 @@ const App: React.FC = () => {
                             <Route path="/products/features" element={<FeaturedProducts />} />
                             <Route path="/about" element={<AboutUs />} />
                             <Route path="/help" element={<HelpCenter />} />
+                            <Route path="/privacy" element={<Privacy />} /> {/* ✨ NEW: Public Privacy Route */}
                             <Route path="/payment" element={<Payment />} />
                             <Route path="/products" element={<ProductListing />} />
                             
                             {/* ✨ Reactive Protected Features */}
-                            <Route path="/cart" element={activeToken ? <Cart /> : <Navigate to="/login" replace />} />
-                            <Route path="/checkout" element={activeToken ? <Checkout /> : <Navigate to="/login" replace />} />
-                            <Route path="/order-success" element={activeToken ? <OrderSuccess /> : <Navigate to="/login" replace />} />
-                            <Route path="/orders" element={activeToken ? <MyOrders /> : <Navigate to="/login" replace />} />
-                            <Route path="/wishlist" element={activeToken ? <Wishlist /> : <Navigate to="/login" replace />} />
+                            <Route path="/cart" element={<ProtectedRoute token={activeToken}><Cart /></ProtectedRoute>} />
+                            <Route path="/checkout" element={<ProtectedRoute token={activeToken}><Checkout /></ProtectedRoute>} />
+                            <Route path="/order-success" element={<ProtectedRoute token={activeToken}><OrderSuccess /></ProtectedRoute>} />
+                            <Route path="/orders" element={<ProtectedRoute token={activeToken}><MyOrders /></ProtectedRoute>} />
+                            <Route path="/wishlist" element={<ProtectedRoute token={activeToken}><Wishlist /></ProtectedRoute>} />
 
-                            <Route path="/quiz" element={activeToken ? <QuizPage /> : <Navigate to="/login" replace />} />
-                            <Route path="/leaderboard" element={activeToken ? <Leaderboard /> : <Navigate to="/login" replace />} />
+                            <Route path="/quiz" element={<ProtectedRoute token={activeToken}><QuizPage /></ProtectedRoute>} />
+                            <Route path="/leaderboard" element={<ProtectedRoute token={activeToken}><Leaderboard /></ProtectedRoute>} />
 
-                            <Route path="/profile" element={activeToken ? <Profile /> : <Navigate to="/login" replace />}>
+                            <Route path="/profile" element={<ProtectedRoute token={activeToken}><Profile /></ProtectedRoute>}>
                                 <Route index element={<OrderHistory />} /> 
                                 <Route path="orders" element={<OrderHistory />} />
                                 <Route path="details" element={<UserDetails />} />
                                 <Route path="rewards" element={<RewardTracker />} />
                                 <Route path="addresses" element={<SavedAddresses />} />
                                 <Route path="quiz" element={<QuizPage />} />
+                                <Route path="track/:id" element={<TrackingPage />} />
                             </Route>
                         </Route>
 
@@ -150,12 +151,10 @@ const App: React.FC = () => {
                                 <Route path="/admin/inventory" element={<Inventory />} />
                                 <Route path="/admin/add-product" element={<AddProduct />} />
                                 <Route path="/admin/logistics-summary" element={<LogisticsSummary />} />
+                                <Route path="/admin/shipments" element={<LogisticsTracker />} />
                             </Route>
                         </Route>
 
-                        {/* 🔐 AUTH PAGES
-                            If logged in, prevent access to login page.
-                        */}
                         <Route path="/login" element={activeToken ? <Navigate to="/" replace /> : <Login />} />
                         <Route path="/admin/login" element={activeToken ? <Navigate to="/admin/orders" replace /> : <AdminLogin />} />
 

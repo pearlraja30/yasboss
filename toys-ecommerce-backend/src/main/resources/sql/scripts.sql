@@ -1,3 +1,35 @@
+
+-- Create Enum for consistent status management
+CREATE TYPE shipment_status AS ENUM (
+    'PENDING', 'CANCELLATION_REQUESTED', 'MANIFESTED', 
+    'PICKUP_SCHEDULED', 'IN_TRANSIT', 'RTO', 'DELIVERED'
+);
+
+CREATE TABLE shipment_tracking (
+    id SERIAL PRIMARY KEY,
+    order_id BIGINT REFERENCES orders(id),
+    waybill_number VARCHAR(100) UNIQUE,
+    carrier VARCHAR(50) DEFAULT 'Delhivery',
+    from_city VARCHAR(100),
+    to_city VARCHAR(100),
+    current_location VARCHAR(255),
+    dead_weight DECIMAL(10,2),
+    vol_weight DECIMAL(10,2),
+    status shipment_status DEFAULT 'PENDING',
+    ship_date TIMESTAMP,
+    edd TIMESTAMP, -- Estimated Delivery Date
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE shipment_logs (
+    id SERIAL PRIMARY KEY,
+    waybill_number VARCHAR(100) REFERENCES shipment_tracking(waybill_number),
+    status VARCHAR(50), -- e.g., 'Bag Received at Facility'
+    location VARCHAR(255),
+    event_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    activity_details TEXT -- e.g., 'Bag Added To Trip'
+);
+
 -- Admin User Insertion
 INSERT INTO users (full_name, email, password, phone, role) 
 VALUES 

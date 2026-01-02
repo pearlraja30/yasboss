@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { Product } from '../types/Product';
+import { g } from 'framer-motion/client';
 
 /**
  * 1. Centralized Host Configuration
@@ -289,26 +290,60 @@ export const agentService = {
         })
 };
 
+export const shipmentService = {
+    /**
+     * Fetches numerical counts for each shipment status bubble.
+     */
+    getCounts: async () => {
+        const response = await apiClient.get('/admin/shipments/counts');
+        return response.data; // { IN_TRANSIT: 1, DELIVERED: 0, ... }
+    },
+
+    /**
+     * Fetches filtered shipment details based on active tab.
+     */
+    getFilteredShipments: async (status: string) => {
+        const response = await apiClient.get('/admin/shipments/filter', {
+            params: { status }
+        });
+        return response.data;
+    },
+
+    /**
+     * Updates tracking details manually or via webhook.
+     */
+    updateTracking: async (waybill: string, data: any) => {
+        const response = await apiClient.put(`/admin/shipments/update/${waybill}`, data);
+        return response.data;
+    },
+
+    getTrackingDetails: async (waybill: string) => {
+        const response = await apiClient.get(`admin/shipments/track/${waybill}`);
+        return response.data;
+    }
+};
+
 /**
 * 🚀 Centralized API Export
 */
 const api = {
-productService,
-authService,
-cartService, // ✨ Included in default export
-orderService,
-rewardService,
-couponService: {
-validateCoupon: async (code: string, subtotal: number) => {
-const response = await apiClient.get(`/coupons/validate?code=${code}&total=${subtotal}`);
-return response.data;
-}
-},
-quizService,
-inventoryService,
-userService,
-adminService,
-agentService
+    productService,
+    authService,
+    cartService, 
+    orderService,
+    rewardService,
+    couponService: {
+    validateCoupon: async (code: string, subtotal: number) => {
+            const response = await apiClient.get(`/coupons/validate?code=${code}&total=${subtotal}`);
+            return response.data;
+        }
+    },
+    quizService,
+    inventoryService,
+    userService,
+    adminService,
+    agentService,
+    shipmentService
 };
 
 export default api;
