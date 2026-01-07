@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ShoppingBag, Home } from 'lucide-react'; // Added for UI icons
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { ArrowLeft, ShoppingBag, Home, ShoppingCart, Eye, Loader2 } from 'lucide-react';
 import axios from 'axios';
+import { toast } from 'react-toastify';
 
 const AgeProductList = () => {
-    const { ageId } = useParams(); // Captures "0-2-years" or similar from URL
-    const navigate = useNavigate(); // For navigation back/home
+    const { ageId } = useParams();
+    const navigate = useNavigate();
     const [products, setProducts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -13,11 +14,11 @@ const AgeProductList = () => {
         const fetchAgeSpecificData = async () => {
             try {
                 setLoading(true);
+                // Modernized API call
                 const res = await axios.get(`http://localhost:8080/api/products/age/${ageId}`);
                 setProducts(res.data);
-                console.log("Fetched products for age range", ageId, res.data);
             } catch (err) {
-                console.error("Failed to load products for age range", ageId);
+                toast.error("Failed to load age-specific toys.");
             } finally {
                 setLoading(false);
             }
@@ -25,92 +26,67 @@ const AgeProductList = () => {
         fetchAgeSpecificData();
     }, [ageId]);
 
-    // Handle back navigation
-    const goBack = () => navigate(-1);
-    const goHome = () => navigate('/');
+    const handleQuickAdd = async (e: React.MouseEvent, productId: number) => {
+        e.preventDefault(); // Prevent navigation
+        const userEmail = localStorage.getItem('userEmail');
+        if (!userEmail) return toast.warn("Please login to add items!");
 
-    if (loading) {
-        return <div className="p-20 text-center font-bold text-[#2D4A73]">Loading Toys...</div>;
-    }
+        try {
+            await axios.post(`http://localhost:8080/api/cart/add/${productId}`, {}, {
+                headers: { 'X-User-Email': userEmail }
+            });
+            toast.success("Added to bag!");
+        } catch (error) {
+            toast.error("Failed to add to cart.");
+        }
+    };
+
+    if (loading) return (
+        <div className="min-h-screen flex flex-col items-center justify-center">
+            <Loader2 className="animate-spin text-[#2D4A73]" size={48} />
+            <p className="mt-4 font-black text-[#2D4A73] uppercase tracking-widest">Unboxing Toys...</p>
+        </div>
+    );
 
     return (
-        <div className="max-w-7xl mx-auto p-8 bg-white min-h-screen">
-            {/* 🛠️ Top Navigation: Go Back Option */}
-            <div className="mb-8">
-                <button 
-                    onClick={goBack}
-                    className="flex items-center gap-2 text-[#2D4A73] font-bold hover:bg-gray-50 px-4 py-2 rounded-xl transition-all"
-                >
-                    <ArrowLeft size={20} /> Go Back
+        <div className="max-w-7xl mx-auto px-4 py-12">
+            <header className="mb-16">
+                <button onClick={() => navigate(-1)} className="flex items-center gap-2 font-black text-[#2D4A73] mb-8 hover:translate-x-[-4px] transition-transform">
+                    <ArrowLeft size={20} /> GO BACK
                 </button>
-            </div>
+                <h1 className="text-7xl font-black text-[#2D4A73] tracking-tighter capitalize">{ageId?.replace(/-/g, ' ')}</h1>
+            </header>
 
-            {/* Dynamic Header */}
-            <div className="text-center mb-12">
-                <h1 className="text-6xl font-black text-[#2D4A73] mb-4 capitalize">
-                    {ageId?.replace(/-/g, ' ')}
-                </h1>
-                <p className="text-gray-500 max-w-2xl mx-auto text-lg leading-relaxed font-medium">
-                    Explore safe and stimulating toys for babies aged {ageId?.replace(/-/g, ' ')}. 
-                    From rattles to sensory toys, each piece is designed to spark curiosity.
-                </p>
-                <p className="mt-4 font-black text-gray-400 uppercase tracking-widest text-sm">
-                    {products.length} Products Found
-                </p>
-            </div>
-
-            {/* 🛠️ Conditional Rendering: Empty State Logic */}
-            {products.length === 0 ? (
-                <div className="mt-16 py-20 bg-gray-50 rounded-[4rem] border-2 border-dashed border-gray-200 text-center">
-                    <div className="bg-white w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
-                        <ShoppingBag size={40} className="text-gray-300" />
-                    </div>
-                    <h2 className="text-3xl font-black text-[#2D4A73]">No Toys Found Yet</h2>
-                    <p className="text-gray-400 mt-2 mb-10 font-medium">
-                        We don't have items in this category right now. Check back soon!
-                    </p>
-                    
-                    <div className="flex flex-col md:flex-row gap-4 justify-center items-center">
-                        <button 
-                            onClick={goBack}
-                            className="px-10 py-4 bg-white text-[#2D4A73] font-black rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all flex items-center gap-2"
-                        >
-                            <ArrowLeft size={18} /> Try Another Age
-                        </button>
-                        <button 
-                            onClick={goHome}
-                            className="px-10 py-4 bg-[#2D4A73] text-white font-black rounded-2xl shadow-lg hover:bg-black transition-all flex items-center gap-2"
-                        >
-                            <Home size={18} /> Continue Shopping
-                        </button>
-                    </div>
-                </div>
-            ) : (
-                <>
-                    {/* Filter & Sort Bar (Visible only if items exist) */}
-                    <div className="flex justify-between items-center mb-10">
-                        <button className="border-2 border-gray-100 px-6 py-3 rounded-xl flex items-center gap-2 font-bold text-[#2D4A73] hover:bg-gray-50">Filter</button>
-                        <button className="border-2 border-gray-100 px-6 py-3 rounded-xl flex items-center gap-2 font-bold text-[#2D4A73] hover:bg-gray-50">Sort By</button>
-                    </div>
-
-                    {/* Product Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-                        {products.map(product => (
-                            <div key={product.id} className="group cursor-pointer">
-                                <div className="bg-gray-50 rounded-[3rem] p-10 aspect-square flex items-center justify-center overflow-hidden relative">
-                                    <img 
-                                        src={product.imageUrl} 
-                                        alt={product.name} 
-                                        className="max-h-full group-hover:scale-110 transition-transform duration-500"
-                                    />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
+                {products.map(product => (
+                    <Link to={`/product/${product.id}`} key={product.id} className="group">
+                        <div className="bg-gray-50 rounded-[3.5rem] p-12 aspect-square flex items-center justify-center relative overflow-hidden transition-all duration-500 group-hover:shadow-2xl group-hover:shadow-blue-100">
+                            <img 
+                                src={product.imageUrl}
+                                className="max-h-full object-contain group-hover:scale-110 transition-transform duration-700" 
+                                alt={product.name} 
+                            />
+                            
+                            {/* Hover Actions */}
+                            <div className="absolute inset-0 bg-white/40 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                                <button 
+                                    onClick={(e) => handleQuickAdd(e, product.id)}
+                                    className="p-5 bg-[#2D4A73] text-white rounded-3xl hover:bg-black transition-all shadow-xl"
+                                >
+                                    <ShoppingCart size={24} />
+                                </button>
+                                <div className="p-5 bg-white text-[#2D4A73] rounded-3xl shadow-xl">
+                                    <Eye size={24} />
                                 </div>
-                                <h3 className="mt-6 font-bold text-xl text-[#2D4A73]">{product.name}</h3>
-                                <p className="text-blue-600 font-black text-2xl mt-1">₹{product.sellingPrice}</p>
                             </div>
-                        ))}
-                    </div>
-                </>
-            )}
+                        </div>
+                        <div className="mt-8 px-4">
+                            <h3 className="text-2xl font-black text-[#2D4A73] tracking-tight">{product.name}</h3>
+                            <p className="text-3xl font-black text-blue-600 mt-2">₹{product.price}</p>
+                        </div>
+                    </Link>
+                ))}
+            </div>
         </div>
     );
 };

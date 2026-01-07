@@ -4,19 +4,35 @@ import api from '../services/api';
 
 const Leaderboard: React.FC = () => {
     const [leaders, setLeaders] = useState<any[]>([]);
+    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
     useEffect(() => {
-        const loadLeaderboard = async () => {
-            try {
-                // You'll need to add getLeaderboard to your api.ts
-                const data = await api.userService.getLeaderboard();
-                setLeaders(data);
-            } catch (err) {
-                console.error("Leaderboard failed to load");
-            }
-        };
-        loadLeaderboard();
+        const token = localStorage.getItem('jwtToken');
+        
+        // ✨ Check for a valid token before doing anything
+        if (token && token !== "null" && token.length > 20) {
+            setIsAuthenticated(true);
+            
+            const loadLeaderboard = async () => {
+                try {
+                    // This calls the method we added to api.ts
+                    const data = await api.userService.getLeaderboard();
+                    setLeaders(data || []);
+                } catch (err) {
+                    console.error("Leaderboard failed to load");
+                }
+            };
+            loadLeaderboard();
+        } else {
+            setIsAuthenticated(false);
+            console.log("Skipping leaderboard fetch: User not authenticated");
+        }
     }, []);
+
+    // ✨ 1. PROTECTIVE RENDER: Don't show anything if not logged in or no data
+    if (!isAuthenticated || leaders.length === 0) {
+        return null; 
+    }
 
     return (
         <div className="bg-white rounded-[3rem] p-10 shadow-2xl border border-gray-100 max-w-2xl mx-auto my-10">
@@ -30,17 +46,26 @@ const Leaderboard: React.FC = () => {
 
             <div className="space-y-4">
                 {leaders.map((user, index) => (
-                    <div key={index} className={`flex items-center justify-between p-6 rounded-[2rem] transition-all ${index === 0 ? 'bg-yellow-50 border-2 border-yellow-200' : 'bg-gray-50'}`}>
+                    <div 
+                        key={index} 
+                        className={`flex items-center justify-between p-6 rounded-[2rem] transition-all hover:scale-[1.02] ${
+                            index === 0 ? 'bg-yellow-50 border-2 border-yellow-200' : 'bg-gray-50'
+                        }`}
+                    >
                         <div className="flex items-center gap-6">
                             <span className="text-2xl font-black text-gray-300 w-8">#{index + 1}</span>
                             <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm">
-                                {index === 0 ? <Medal className="text-yellow-500" /> : <Star className="text-blue-400" />}
+                                {index === 0 ? (
+                                    <Medal className="text-yellow-500" />
+                                ) : (
+                                    <Star className={`text-blue-400 ${index > 2 ? 'opacity-30' : ''}`} />
+                                )}
                             </div>
                             <span className="text-xl font-black text-[#2D4A73]">{user.name}</span>
                         </div>
                         <div className="text-right">
                             <span className="block text-2xl font-black text-pink-600">{user.points}</span>
-                            <span className="text-[10px] font-black text-gray-400 uppercase">Points</span>
+                            <span className="text-[10px] font-black text-gray-400 uppercase">Points Earned</span>
                         </div>
                     </div>
                 ))}

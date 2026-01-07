@@ -1,16 +1,30 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, ShoppingCart, User, MapPin, X, Info, Heart, HelpCircle, LogOut, Star, Sparkles, ChevronDown, LayoutDashboard } from 'lucide-react';
+import { 
+    Search, ShoppingCart, User, MapPin, X, Info, Heart, 
+    HelpCircle, LogOut, Star, Sparkles, ChevronDown, 
+    LayoutDashboard, Truck, Zap, ArrowRight 
+} from 'lucide-react'; 
 import { motion, AnimatePresence } from 'framer-motion';
 import CategoryMenu from './CategoryMenu';
 import { getCurrentCoordinates, getAddressFromCoords } from '../services/locationService';
 import { toast } from 'react-toastify';
+// ✨ Import your centralized API service
+import api from '../services/api'; 
 
 interface UserData {
     fullName: string;
     email: string;
     role: string;
     rewardPoints?: number;
+}
+
+// ✨ Interface to resolve "Property does not exist" errors
+interface Announcement {
+    text: string;
+    iconType: 'TRUCK' | 'SPARKLES' | 'ZAP' | 'STAR';
+    color: string; // Tailwind class like 'text-white' or 'text-pink-400'
+    link?: string;
 }
 
 const Header: React.FC = () => {
@@ -24,8 +38,60 @@ const Header: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [user, setUser] = useState<UserData | null>(null);
     
+    // ✨ Updated Ticker States
+    const [tickerMessages, setTickerMessages] = useState<Announcement[]>([]);
+    const [tickerIndex, setTickerIndex] = useState(0);
+
+    // ✨ Map string icon names from Java to Lucide icons
+    const getIcon = (type: string) => {
+        switch(type) {
+            case 'TRUCK': return <Truck size={12} />;
+            case 'SPARKLES': return <Sparkles size={12} />;
+            case 'ZAP': return <Zap size={12} />;
+            default: return <Star size={12} />;
+        }
+    };
+
     const headerRef = useRef<HTMLDivElement>(null);
     const navigate = useNavigate();
+
+    // ✨ Fetch Live Ticker Data from Java Backend
+    useEffect(() => {
+        const fetchAnnouncements = async () => {
+            try {
+                // Adjust this call based on your exact api.ts structure
+                const data = await api.announcementService.getActive();
+                if (data && data.length > 0) {
+                    setTickerMessages(data);
+                } else {
+                    // Fallback if no active announcements in DB
+                    setTickerMessages([{ 
+                        text: "₹49 Delivery Charge. Free Delivery above ₹500", 
+                        iconType: 'TRUCK', 
+                        color: 'text-white' 
+                    }]);
+                }
+            } catch (err) {
+                console.error("Ticker fetch failed, using fallback.");
+                setTickerMessages([{ 
+                    text: "Welcome to Yas Boss Toys!", 
+                    iconType: 'STAR', 
+                    color: 'text-white' 
+                }]);
+            }
+        };
+        fetchAnnouncements();
+    }, []);
+
+    // ✨ Advanced Ticker Rotation Logic
+    useEffect(() => {
+        if (tickerMessages.length > 1) {
+            const timer = setInterval(() => {
+                setTickerIndex((prev) => (prev + 1) % tickerMessages.length);
+            }, 4000);
+            return () => clearInterval(timer);
+        }
+    }, [tickerMessages]);
 
     const ageGroups = [
         { label: "0 - 2 Years", value: "0-2", image: "/images/ages/age-0-2.jpg" },
@@ -36,7 +102,6 @@ const Header: React.FC = () => {
 
     const syncSession = useCallback(() => {
         const savedUser = localStorage.getItem('user');
-        // ✨ Validation: Ensure token exists before trusting session
         const token = localStorage.getItem('jwtToken');
         
         if (savedUser && token && token !== "null") {
@@ -76,19 +141,9 @@ const Header: React.FC = () => {
     }, [syncSession]);
 
     const handleLogout = () => {
-        // 1. Clear all session data
-        localStorage.removeItem('jwtToken');
-        localStorage.removeItem('user');
-        localStorage.removeItem('userEmail');
         localStorage.clear();
-        
-        // 2. Notify the application that the user has logged out
         window.dispatchEvent(new Event('storage'));
-        
         toast.success("Logged out successfully");
-
-        // 3. ✨ THE FIX: Force navigation to Home before reloading
-        //navigate('/', { replace: true }); 
         window.location.href = '/';
     };
 
@@ -120,40 +175,66 @@ const Header: React.FC = () => {
     return (
         <header ref={headerRef} className="fixed top-0 w-full z-[100] bg-white shadow-sm">
             
-            {/* ✨ APPENDED: Promotional Marquee Bar */}
-            <div className="w-full bg-[#2D4A73] py-2 overflow-hidden border-b border-white/10">
+            {/* ✨ ADVANCED DYNAMIC TICKER BAR */}
+            <div 
+                className="w-full bg-[#2D4A73] py-2.5 overflow-hidden border-b border-white/10 relative cursor-pointer group"
+                onClick={() => tickerMessages[tickerIndex]?.link && navigate(tickerMessages[tickerIndex].link!)}
+            >
+                <div className="max-w-7xl mx-auto px-4 flex justify-center items-center">
+                    <AnimatePresence mode="wait">
+                        {tickerMessages.length > 0 && (
+                            <motion.div
+                                key={tickerIndex}
+                                initial={{ opacity: 0, x: 20, filter: "blur(4px)" }}
+                                animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                                exit={{ opacity: 0, x: -20, filter: "blur(4px)" }}
+                                transition={{ duration: 0.6, ease: "anticipate" }}
+                                className="flex items-center gap-3"
+                            >
+                                {/* Dynamic Pulse Icon */}
+                                <motion.div 
+                                    animate={{ rotate: [0, 10, -10, 0], scale: [1, 1.1, 1] }}
+                                    transition={{ repeat: Infinity, duration: 3 }}
+                                    className={tickerMessages[tickerIndex]?.color || 'text-white'}
+                                >
+                                    {getIcon(tickerMessages[tickerIndex]?.iconType)}
+                                </motion.div>
+
+                                <span className={`text-[10px] font-black uppercase tracking-[0.25em] whitespace-nowrap ${tickerMessages[tickerIndex]?.color || 'text-white'}`}>
+                                    {tickerMessages[tickerIndex]?.text}
+                                </span>
+
+                                <motion.div 
+                                    initial={{ opacity: 0, x: -5 }}
+                                    whileHover={{ opacity: 1, x: 0 }}
+                                    className="hidden md:flex items-center gap-1 text-white/50 text-[8px] font-bold"
+                                >
+                                    SHOP NOW <ArrowRight size={10} />
+                                </motion.div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
+                
+                {/* Visual Shine Effect */}
                 <motion.div 
-                    initial={{ x: "100%" }}
-                    animate={{ x: "-100%" }}
-                    transition={{ repeat: Infinity, duration: 20, ease: "linear" }}
-                    className="whitespace-nowrap flex gap-20 items-center justify-center"
-                >
-                    {[1].map((i) => (
-                        <span key={i} className="text-white text-[11px] font-black uppercase tracking-[0.2em]">
-                            ₹49 Delivery Charge. Free Delivery above ₹500
-                        </span>
-                    ))}
-                </motion.div>
+                    animate={{ x: ["-100%", "300%"] }}
+                    transition={{ repeat: Infinity, duration: 8, ease: "linear" }}
+                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent w-1/4 skew-x-12 pointer-events-none"
+                />
             </div>
 
             <div className="border-b bg-white relative">
                 <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between gap-4">
-                    
                     {/* Navigation Links */}
                     <div className="hidden lg:flex items-center space-x-6 text-[13px] font-black text-gray-500 uppercase tracking-tight">
                         <Link to="/products" className="hover:text-[#2D4A73] transition-colors">Featured</Link>
                         
-                        <button 
-                            onClick={() => { setIsCategoryOpen(!isCategoryOpen); setIsCollectionOpen(false); setIsMoreOpen(false); }} 
-                            className={`hover:text-[#2D4A73] transition-colors ${isCategoryOpen ? 'text-[#2D4A73]' : ''}`}
-                        >
+                        <button onClick={() => { setIsCategoryOpen(!isCategoryOpen); setIsCollectionOpen(false); setIsMoreOpen(false); }} className={`hover:text-[#2D4A73] transition-colors ${isCategoryOpen ? 'text-[#2D4A73]' : ''}`}>
                             Categories
                         </button>
 
-                        <button 
-                            onClick={() => { setIsCollectionOpen(!isCollectionOpen); setIsCategoryOpen(false); setIsMoreOpen(false); }} 
-                            className={`hover:text-[#2D4A73] transition-colors ${isCollectionOpen ? 'text-[#2D4A73]' : ''}`}
-                        >
+                        <button onClick={() => { setIsCollectionOpen(!isCollectionOpen); setIsCategoryOpen(false); setIsMoreOpen(false); }} className={`hover:text-[#2D4A73] transition-colors ${isCollectionOpen ? 'text-[#2D4A73]' : ''}`}>
                             Collections
                         </button>
 
@@ -197,11 +278,7 @@ const Header: React.FC = () => {
                                 <span className="absolute top-1.5 right-1.5 bg-pink-600 text-white text-[8px] w-4 h-4 flex items-center justify-center rounded-full font-black">3</span>
                             </Link>
 
-                            <div 
-                                className="relative flex items-center" 
-                                onMouseEnter={() => user && setIsUserMenuOpen(true)} 
-                                onMouseLeave={() => setIsUserMenuOpen(false)}
-                            >
+                            <div className="relative flex items-center" onMouseEnter={() => user && setIsUserMenuOpen(true)} onMouseLeave={() => setIsUserMenuOpen(false)}>
                                 {user ? (
                                     <div className="flex items-center gap-2">
                                         <div className="hidden lg:flex flex-col items-end mr-1">
@@ -210,10 +287,7 @@ const Header: React.FC = () => {
                                                 <Sparkles size={10} /> {user.rewardPoints || 0}
                                             </span>
                                         </div>
-                                        <button 
-                                            onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                                            className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 border-2 border-transparent hover:border-blue-100 transition-all"
-                                        >
+                                        <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 border-2 border-transparent hover:border-blue-100 transition-all">
                                             <User size={20} />
                                         </button>
                                     </div>
@@ -229,7 +303,6 @@ const Header: React.FC = () => {
                                                 <p className="text-sm font-black text-[#2D4A73] truncate">{user.fullName}</p>
                                             </div>
 
-                                            {/* ✨ ADMIN COMMAND CENTER LINK */}
                                             {user.role === 'ADMIN' && (
                                                 <Link to="/admin/orders" onClick={() => setIsUserMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl text-blue-600 hover:bg-blue-50 font-black text-xs uppercase transition-all mb-1">
                                                     <LayoutDashboard size={16} /> Command Center
@@ -279,12 +352,7 @@ const Header: React.FC = () => {
                     >
                         <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8">
                             {ageGroups.map((age) => (
-                                <Link 
-                                    key={age.value} 
-                                    to={`/products?age=${age.value}`} 
-                                    onClick={() => setIsCollectionOpen(false)} 
-                                    className="group relative"
-                                >
+                                <Link key={age.value} to={`/products?age=${age.value}`} onClick={() => setIsCollectionOpen(false)} className="group relative">
                                     <div className="rounded-[3rem] overflow-hidden aspect-[3/4] bg-gray-50 border border-gray-100 shadow-sm transition-all duration-500 group-hover:shadow-2xl group-hover:-translate-y-2">
                                         <img src={age.image} alt={age.label} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                                         <div className="absolute inset-0 bg-gradient-to-t from-[#2D4A73]/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />

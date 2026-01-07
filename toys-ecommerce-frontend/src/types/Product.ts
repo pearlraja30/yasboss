@@ -19,4 +19,5 @@ export interface Product {
     featured?: boolean;
     // Add this line to fix the error
     images?: ProductImage[]; 
+    stockQuantity?: number;
 }

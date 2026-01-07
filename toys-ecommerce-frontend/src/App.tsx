@@ -19,7 +19,7 @@ import FeaturedProducts from './pages/FeaturedProducts';
 import AgeProductList from './pages/AgeProductList';
 import AboutUs from './pages/AboutUs';
 import HelpCenter from './pages/HelpCenter';
-import Privacy from './pages/Privacy'; // ✨ NEW: Import the Privacy page
+import Privacy from './pages/Privacy';
 
 // Auth & User Pages
 import Login from './pages/Login';
@@ -52,16 +52,17 @@ import LogisticsSummary from './components/admin/LogisticsSummary';
 import LogisticsTracker from './components/LogisticsTracker';
 import TrackingPage from './pages/admin/TrackingPage';
 
-// 🛠️ CUSTOMER LAYOUT WRAPPER
+// 🛠️ REFINED CUSTOMER LAYOUT: Prevents content from sliding under the header
 const CustomerLayout = () => (
-    <>
+    <div className="flex flex-col min-h-screen">
         <DeliveryBanner />
         <Header />
-        <main className="flex-grow w-full">
+        {/* main container ensures vertical flow and proper spacing for child pages */}
+        <main className="flex-grow bg-white">
             <Outlet />
         </main>
         <Footer />
-    </>
+    </div>
 );
 
 // 🛡️ PROTECTED ROUTE GUARD
@@ -106,7 +107,8 @@ const App: React.FC = () => {
     return (
         <CompareProvider>
             <Router>
-                <div className="flex flex-col min-h-screen bg-gray-50 w-full">
+                {/* Global Wrapper: Ensures no horizontal overflow or hidden layers */}
+                <div className="min-h-screen bg-white">
                     <Routes>
                         <Route element={<CustomerLayout />}>
                             <Route path="/" element={<Home />} />
@@ -119,11 +121,11 @@ const App: React.FC = () => {
                             <Route path="/products/features" element={<FeaturedProducts />} />
                             <Route path="/about" element={<AboutUs />} />
                             <Route path="/help" element={<HelpCenter />} />
-                            <Route path="/privacy" element={<Privacy />} /> {/* ✨ NEW: Public Privacy Route */}
+                            <Route path="/privacy" element={<Privacy />} />
                             <Route path="/payment" element={<Payment />} />
                             <Route path="/products" element={<ProductListing />} />
                             
-                            {/* ✨ Reactive Protected Features */}
+                            {/* Protected Routes */}
                             <Route path="/cart" element={<ProtectedRoute token={activeToken}><Cart /></ProtectedRoute>} />
                             <Route path="/checkout" element={<ProtectedRoute token={activeToken}><Checkout /></ProtectedRoute>} />
                             <Route path="/order-success" element={<ProtectedRoute token={activeToken}><OrderSuccess /></ProtectedRoute>} />
