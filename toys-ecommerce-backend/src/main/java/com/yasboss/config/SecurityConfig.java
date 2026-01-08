@@ -8,6 +8,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -23,6 +24,7 @@ import com.yasboss.security.JwtAuthenticationFilter;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtFilter;
@@ -59,8 +61,11 @@ public class SecurityConfig {
                 // This fixes the 403 errors on age-0-2.jpg, etc.
                 .requestMatchers("/uploads/**", "/images/**", "/static/**").permitAll()
                 .requestMatchers("/process-payment").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/announcements/active").permitAll() // Public ticker
+
 
                  // Admin Endpoints
+                 .requestMatchers("/api/announcements/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/products").hasRole("ADMIN")
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/products/**").hasRole("ADMIN")
@@ -82,6 +87,7 @@ public class SecurityConfig {
                
                 .anyRequest().authenticated()
             )
+            
             // Add your custom JWT filter before the standard authentication filter
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 

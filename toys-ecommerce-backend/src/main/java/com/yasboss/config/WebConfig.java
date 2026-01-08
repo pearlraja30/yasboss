@@ -1,5 +1,6 @@
 package com.yasboss.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
@@ -7,15 +8,19 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
+
+   @Value("${file.upload-dir}")
+    private String uploadRoot;
+
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-      // Expose the uploads directory to the web
-        registry.addResourceHandler("/uploads/**")
-                .addResourceLocations("file:target/classes/static/uploads/");
+      
         
-        // Expose standard static images
+       String location = "file:" + uploadRoot + (uploadRoot.endsWith("/") ? "" : "/");
+
         registry.addResourceHandler("/images/**")
-                .addResourceLocations("classpath:/static/images/");
+                .addResourceLocations(location)
+                .setCachePeriod(3600); // Optional: Cache images for 1 hour
     }
 
     @Override

@@ -1,27 +1,14 @@
 package com.yasboss.controller;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
-import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.bind.annotation.*;
 
+import com.yasboss.dto.ProductDetailDTO;
+import com.yasboss.dto.ProductImageDTO;
 import com.yasboss.model.Product;
 import com.yasboss.service.ProductService;
 
@@ -35,13 +22,12 @@ public class ProductController {
     @Autowired
     private ProductService productService;
     
-    @GetMapping
-    public List<Product> getBaseProducts() {
-        return productService.getAllProducts();
-    }
+    // --- 🔍 SEARCH & FILTERING ---
 
-    // ✨ UPDATED: Explicitly named /filter to match frontend api.ts call
-    // This MUST stay above the /{id} mapping to avoid type mismatch errors
+    /**
+     * Specialized filter for frontend Shop page.
+     * Placed BEFORE /{id} to avoid path variable conflicts.
+     */
     @GetMapping("/filter")
     public List<Product> getProducts(
         @RequestParam(required = false) String category,
@@ -57,43 +43,45 @@ public class ProductController {
         return productService.getFeaturedProducts();
     }
 
+    @GetMapping("/search")
+    public List<Product> searchProducts(@RequestParam("q") String query) {
+        return productService.getProductsByNameFragment(query);
+    }
+
+    // --- 📦 PRODUCT RETRIEVAL ---
+
     @GetMapping("/all")
     public List<Product> getAll() {
         return productService.getAllProducts();
     }
 
-    @GetMapping("/search")
-    public List<Product> searchProducts(@RequestParam("q") String query) {
-        return productService.findByNameContainingIgnoreCase(query);
+    /**
+     * ✨ FIX: Delegate mapping to Service layer.
+     * This ensures the DTO (with 4-arg constructor) is built correctly.
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<ProductDetailDTO> getProductById(@PathVariable Long id) {
+        log.info("Fetching details for Product ID: {}", id);
+        try {
+            ProductDetailDTO dto = productService.getProductById(id);
+            return ResponseEntity.ok(dto);
+        } catch (Exception e) {
+            log.error("Product not found: {}", id);
+            return ResponseEntity.notFound().build();
+        }
     }
 
     @GetMapping("/category/{categoryName}")
     public ResponseEntity<List<Product>> getProductsByCategory(@PathVariable String categoryName) {
-        log.info("Fetching products for category: {}", categoryName);
-        List<Product> products = productService.getProductsByCategory(categoryName);
-        return ResponseEntity.ok(products);
+        return ResponseEntity.ok(productService.getProductsByCategory(categoryName));
     }
 
     @GetMapping("/age/{ageRange}")
     public List<Product> getProductsByAge(@PathVariable String ageRange) {
-        log.info("Fetching products for age range: {}", ageRange);
-        return productService.findByAgeRangeIgnoreCase(ageRange);
+        return productService.getFindByAgeRangeIgnoreCase(ageRange);
     }
 
-    @GetMapping("/low-stock")
-    public ResponseEntity<List<Product>> getLowStockItems(@RequestParam(defaultValue = "5") int threshold) {
-        List<Product> lowStock = productService.findByStockLessThan(threshold);
-        return ResponseEntity.ok(lowStock);
-    }
-
-    // 🔒 MOVED: Dynamic ID paths must be at the bottom
-    // This prevents "filter" or "all" from being treated as a numeric ID
-    @GetMapping("/{id}")
-    public ResponseEntity<Product> getProductById(@PathVariable Long id) {
-        return productService.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    } 
+    // --- 🛠️ ADMIN & STOCK MANAGEMENT ---
 
     @PostMapping("/add")
     public ResponseEntity<Product> addProduct(@RequestBody Product product) {
@@ -105,12 +93,11 @@ public class ProductController {
     public ResponseEntity<Product> updateProduct(@PathVariable Long id, @RequestBody Product details) {
         return productService.findById(id).map(product -> {
             product.setName(details.getName());
-            product.setMrpPrice(details.getMrpPrice());
-            product.setSellingPrice(details.getSellingPrice());
+            product.setPrice(details.getPrice()); // Standardized field naming
             product.setDetailedDescription(details.getDetailedDescription());
-            product.setStock(details.getStock());
+            product.setStockQuantity(details.getStockQuantity());
             product.setCategory(details.getCategory());
-            return ResponseEntity.ok(productService.save(product));
+            return ResponseEntity.ok(productService.saveProduct(product));
         }).orElse(ResponseEntity.notFound().build());
     }
 
@@ -120,16 +107,8 @@ public class ProductController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/upload-image")
-    public ResponseEntity<Map<String, String>> uploadImage(@RequestParam("file") MultipartFile file) {
-        try {
-            String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
-            Path uploadPath = Paths.get("target/classes/static/uploads/"); 
-            if (!Files.exists(uploadPath)) Files.createDirectories(uploadPath);
-            Files.copy(file.getInputStream(), uploadPath.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
-            return ResponseEntity.ok(Map.of("url", "http://localhost:8080/uploads/" + fileName));
-        } catch (IOException e) {
-            return ResponseEntity.status(500).body(Map.of("error", "Upload failed"));
-        }
+    @GetMapping("/{id}/360")
+    public ResponseEntity<List<ProductImageDTO>> get360View(@PathVariable Long id) {
+        return ResponseEntity.ok(productService.get360Gallery(id));
     }
 }

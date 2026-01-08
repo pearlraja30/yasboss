@@ -60,6 +60,7 @@ public class Product {
     @JsonManagedReference 
     private List<ProductImage> images;
     
+    @Column(name = "stock_quantity")
     private Integer stockQuantity;
     private Integer lowStockThreshold = 5;
 }

@@ -105,3 +105,11 @@ INSERT INTO products (name, price, category, age_range, image_url, is_featured) 
 ('Magnetic Building Blocks', 1599.00, 'wooden-toys', '6+', '/images/ages/age-6.jpg', TRUE),
 ('Colorful Xylophone', 650.00, 'activity-toys', '0-2', '/images/ages/age-0-2.jpg', FALSE),
 ('Memory Match Game', 350.00, 'indoor-games', '4-6', '/images/products/memory.jpg', FALSE);
+
+
+INSERT INTO announcements (text, icon_type, color, target_link, active) 
+VALUES 
+('₹49 Delivery Charge. Free Delivery above ₹500', 'TRUCK', 'text-white', null, true),
+('Eco-Friendly Collection: Toys for a Better Future', 'SPARKLES', 'text-green-400', '/products?category=Eco-Friendly', true),
+('Weekend Special: Earn 2x Points Today!', 'STAR', 'text-yellow-400', '/quiz', true),
+('Flash Sale: STEM Kits are 15% OFF!', 'ZAP', 'text-pink-400', '/products?category=STEM', true);
