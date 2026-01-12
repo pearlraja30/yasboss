@@ -1,7 +1,7 @@
 // src/services/api.ts
 import axios from 'axios';
 import type { Product } from '../types/Product';
-import { toast } from 'react-toastify'; // ✨ Added for centralized error notifications
+import { toast } from 'react-toastify'; 
 
 /**
  * 1. Centralized Host Configuration
@@ -29,38 +29,26 @@ apiClient.interceptors.request.use((config) => {
 
     if (token && token !== "null" && token !== "undefined" && token.length > 20) {
         config.headers.Authorization = `Bearer ${token}`;
-        console.log(`🚀 API INTERCEPTOR: Attached token to ${config.url}`);
-    } else {
-        console.warn(`⚠️ API INTERCEPTOR: No token found for ${config.url}`);
     }
     
     return config;
-}, (error) => {
-    return Promise.reject(error);
-});
+}, (error) => Promise.reject(error));
 
 /**
- * ✨ REFINED RESPONSE INTERCEPTOR
- * Now captures clean Java ErrorResponse messages and displays them via Toast.
+ * REFINED RESPONSE INTERCEPTOR
  */
 apiClient.interceptors.response.use(
     (response) => response,
     (error) => {
-        // Extract the message from your Java GlobalExceptionHandler
         const message = error.response?.data?.message || "An unexpected magic error occurred!";
         const status = error.response?.status;
 
         if (status === 401) {
-            console.error("Session Expired");
             toast.warning("🔒 Session expired. Please sign in again.");
             localStorage.clear();
             if (!window.location.pathname.includes('/login')) {
                 window.location.href = '/login';
             }
-        } else if (status === 404) {
-            toast.error(`🔍 ${message}`);
-        } else if (status === 500) {
-            toast.error(`⚠️ Server Error: ${message}`);
         } else {
             toast.error(message);
         }
@@ -101,10 +89,6 @@ export const productService = {
         const response = await apiClient.get('/products/filter', { params });
         return response.data;
     },
-    
-    /**
-     * Uploads a single media file (Image or Video) with flags.
-     */
     uploadMedia: async (productId: number, file: File, is360: boolean, isVideo: boolean) => {
         const formData = new FormData();
         formData.append('file', file);
@@ -115,47 +99,40 @@ export const productService = {
         });
         return response.data;
     },
-
-    /**
-     * Clears the entire 360 rotation set and physical files.
-     */
     delete360Sequence: async (productId: number) => {
         const response = await apiClient.delete(`/admin/products/${productId}/delete-360`);
         return response.data;
     },
-
-    /**
-     * Deletes a specific media item (Image/Video) and its physical file.
-     */
     deleteMedia: async (imageId: number) => {
         const response = await apiClient.delete(`/admin/products/media/${imageId}`);
         return response.data;
     },
-
-    // --- Legacy methods ---
     addProduct: async (productData: Partial<Product>): Promise<Product> => {
         const response = await apiClient.post('/products/add', productData);
+        return response.data;
+    },
+    addProductWithImage: async (formData: FormData) => {
+        const response = await apiClient.post('/products/add', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
         return response.data;
     },
     updateProduct: async (id: number, data: Partial<Product>): Promise<Product> => {
         const response = await apiClient.put(`/products/update/${id}`, data);
         return response.data;
     },
-    deleteProduct: async (id: number): Promise<void> => {
-        await apiClient.delete(`/products/delete/${id}`);
+    deleteProduct: async (id: number) => {
+        const response = await apiClient.delete(`/products/delete/${id}`);
+        return response.data;
     },
-
     upload360Sequence: async (productId: number, files: File[], onProgress?: (percent: number) => void) => {
         const formData = new FormData();
         files.forEach(file => formData.append('files', file));
-        
         const response = await apiClient.post(`/admin/products/${productId}/upload-360`, formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
-            // ✨ Axios native progress tracking
             onUploadProgress: (progressEvent) => {
                 if (onProgress && progressEvent.total) {
-                    const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-                    onProgress(percentCompleted);
+                    onProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
                 }
             }
         });
@@ -165,6 +142,7 @@ export const productService = {
 
 /**
 * 5. Auth Service Implementation
+* ✨ Aligned with email/password structure to fix TS errors
 */
 export const authService = {
     login: async (credentials: { email: string; password: string }) => {
@@ -187,6 +165,20 @@ export const cartService = {
             { headers: { 'X-User-Email': email } }
         );
     },
+
+    calculateCartTotals: (items: any[], taxPercent: number, freeThreshold: number) => {
+        const subtotal = items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+        const taxAmount = (subtotal * taxPercent) / 100;
+        const shipping = subtotal >= freeThreshold ? 0 : 49;
+        const grandTotal = subtotal + taxAmount + shipping;
+
+        return {
+            subtotal,
+            taxAmount,
+            shipping,
+            grandTotal
+        };
+    },
     instantOrder: async (productId: number, quantity: number, email: string) => {
         return await apiClient.post(`/orders/instant`,
             { productId, quantity },
@@ -199,7 +191,10 @@ export const cartService = {
 * 7. Order Service Implementation
 */
 export const orderService = {
-    getUserOrders: (email: string) => apiClient.get(`/orders/user/${email}`),
+    getUserOrders: async (email: string) => {
+        const response = await apiClient.get(`/orders/user/${email}`);
+        return response.data;
+    },
     placeOrder: async (orderData: any) => {
         const response = await apiClient.post('/orders/place', orderData);
         return response.data;
@@ -233,7 +228,25 @@ export const orderService = {
     processPayment: async (paymentData: any) => {
         const response = await apiClient.post('/process-payment', paymentData);
         return response.data;
-    }
+    },
+    requestSupport: async (orderId: string, type: 'RETURN' | 'REPLACEMENT' | 'CANCEL') => {
+        const response = await apiClient.post(`/orders/${orderId}/support`, null, {
+            params: { type }
+        });
+        return response.data;
+    },
+    get: (url: string) => apiClient.get(url),
+
+    getOrderById: async (orderId: string) => {
+        const response = await apiClient.get(`/orders/${orderId}`);
+        return response.data;
+    },
+
+    // Optional: Add a specialized tracking endpoint if your backend supports it
+    getTrackingDetails: async (orderId: string) => {
+        const response = await apiClient.get(`/orders/track/${orderId}`);
+        return response.data;
+    },
 };
 
 /**
@@ -295,9 +308,64 @@ export const userService = {
     updateProfile: async (data: any) => {
         const response = await apiClient.put('/users/profile/update', data);
         return response.data;
+    },
+    uploadProfileImage: async (formData: FormData) => {
+        const response = await apiClient.post('/user/profile-image', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const updatedUser = { ...currentUser, profileImage: response.data.imageUrl };
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        window.dispatchEvent(new Event('storage'));
+        return response.data;
+    },
+    getAddresses: async () => {
+        const response = await apiClient.get('/user/addresses');
+        return response.data;
+    },
+    setDefaultAddress: async (addressId: number) => {
+        const response = await apiClient.put(`/user/addresses/${addressId}/default`);
+        return response.data;
+    },
+    deleteAddress: async (addressId: number) => {
+        const response = await apiClient.delete(`/user/addresses/${addressId}`);
+        return response.data;
+    },
+    addAddress: async (addressData: any) => {
+        const response = await apiClient.post('/user/addresses', addressData);
+        return response.data;
+    },
+    updateFcmToken: async (token: string) => {
+        return await apiClient.put('/user/update-fcm-token', { token });
     }
 };
 
+/**
+ * ✨ 10. NEW: Location Service Implementation
+ */
+export const locationService = {
+    getAddressByPincode: async (pincode: string) => {
+        const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+        const data = await response.json();
+
+        if (data[0].Status === "Success") {
+            const postOffice = data[0].PostOffice[0];
+            return {
+                city: postOffice.District,
+                state: postOffice.State,
+                district: postOffice.District,
+                locality: postOffice.Name
+            };
+        } else {
+            throw new Error("Invalid Pincode");
+        }
+    }
+};
+
+/**
+ * ✨ 11. ADMIN SERVICE
+ * Updated to support Global Settings mapping
+ */
 export const adminService = {
     getLowStock: (threshold: number) => apiClient.get(`/products/low-stock?threshold=${threshold}`),
     getAllOrders: () => apiClient.get('/orders/all'),
@@ -306,6 +374,35 @@ export const adminService = {
             params: { status, agentName, agentPhone }
         }),
     deleteImageId: async (id: number) => apiClient.delete(`/gallery/${id}`),
+    downloadReport: (type: string, start: string, end: string, format: string) => {
+        return apiClient.get('/admin/reports/download', {
+            params: { type, start, end, format },
+            responseType: 'blob',
+        });
+    },
+    applyGlobalOffer: async (data: any) => {
+        const response = await apiClient.post('/admin/offers/apply', data);
+        return response.data;
+    },
+    resetOffers: async () => {
+        const response = await apiClient.post('/admin/offers/reset');
+        return response.data;
+    },
+    getGlobalSettings: async () => {
+        const response = await apiClient.get('/admin/settings');
+        // Transforms [{settingKey: 'X', settingValue: 'Y'}] -> {X: 'Y'}
+        const settingsMap: Record<string, string> = {};
+        if (Array.isArray(response.data)) {
+            response.data.forEach((s: any) => {
+                settingsMap[s.settingKey] = s.settingValue;
+            });
+        }
+        return settingsMap;
+    },
+    updateGlobalSetting: async (key: string, value: string) => {
+        const response = await apiClient.put(`/admin/settings/${key}`, { settingValue: value });
+        return response.data;
+    }
 };
 
 export const agentService = {
@@ -321,9 +418,7 @@ export const shipmentService = {
         return response.data;
     },
     getFilteredShipments: async (status: string) => {
-        const response = await apiClient.get('/admin/shipments/filter', {
-            params: { status }
-        });
+        const response = await apiClient.get('/admin/shipments/filter', { params: { status } });
         return response.data;
     },
     updateTracking: async (waybill: string, data: any) => {
@@ -333,27 +428,36 @@ export const shipmentService = {
     getTrackingDetails: async (waybill: string) => {
         const response = await apiClient.get(`admin/shipments/track/${waybill}`);
         return response.data;
-    }
+    },
+    getAllShipments: async () => {
+        const response = await apiClient.get('/admin/shipments/all');
+        return response.data;
+    },
 };
 
 export const announcementService = {
     getActive: async () => {
         const response = await apiClient.get('/announcements/active');
-        return response.data; // Returns array of Announcement objects
+        return response.data;
     },
     create: async (data: any) => {
         const response = await apiClient.post('/announcements/create', data);
         return response.data;
     },
-    updateStatus: async (id: number, data: any) => {
-        const response = await apiClient.put(`/announcements/update/${id}`, data);
+    updateStatus: async (id: number, active: boolean) => {
+        const response = await apiClient.patch(`/announcements/${id}/status`, null, {
+            params: { active }
+        });
         return response.data;
     },
     delete: async (id: number) => {
         const response = await apiClient.delete(`/announcements/delete/${id}`);
         return response.data;
-    }
-    
+    },
+    getAllForAdmin: async () => {
+        const response = await apiClient.get('/announcements/admin/all');
+        return response.data;
+    },
 };
 
 /**
@@ -377,7 +481,8 @@ const api = {
     adminService,
     agentService,
     shipmentService,
-    announcementService
+    announcementService,
+    locationService
 };
 
 export default api;

@@ -1,7 +1,6 @@
 package com.yasboss.model;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -9,9 +8,11 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import lombok.Data;
 
 @Entity
 @Table(name = "coupons")
+@Data
 public class Coupon {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -20,10 +21,12 @@ public class Coupon {
     @Column(unique = true, nullable = false)
     private String code; // e.g., "TOY20"
 
-    private Integer discountPercent; // e.g., 20
-    private BigDecimal minCartValue; // Requirement #7
-    private LocalDate expiryDate;
-    private Boolean isActive = true;
-
-    // Standard Getters and Setters
+    private String discountType; // "PERCENT" or "FLAT"
+    private Double discountValue;
+    private Double minOrderAmount;
+    private LocalDateTime expiryDate;
+    private boolean active;
+    private Integer usageLimit;
+    private Integer usedCount;
+    
 }

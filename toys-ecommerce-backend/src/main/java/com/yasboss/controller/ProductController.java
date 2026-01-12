@@ -1,11 +1,28 @@
 package com.yasboss.controller;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.yasboss.dto.ProductDetailDTO;
 import com.yasboss.dto.ProductImageDTO;
@@ -13,6 +30,7 @@ import com.yasboss.model.Product;
 import com.yasboss.service.ProductService;
 
 import lombok.extern.slf4j.Slf4j;
+import tools.jackson.databind.ObjectMapper; // Fixes the 'StandardCopyTransition' error
 
 @RestController
 @RequestMapping("/api/products")
@@ -110,5 +128,29 @@ public class ProductController {
     @GetMapping("/{id}/360")
     public ResponseEntity<List<ProductImageDTO>> get360View(@PathVariable Long id) {
         return ResponseEntity.ok(productService.get360Gallery(id));
+    }
+
+    @PostMapping(value = "/add", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Product> addProduct(
+        @RequestPart("product") String productJson,
+        @RequestPart("image") MultipartFile imageFile
+    ) throws IOException {
+        // 1. Convert JSON string to Product Object
+        ObjectMapper mapper = new ObjectMapper();
+        Product product = mapper.readValue(productJson, Product.class);
+
+        // 2. Save the File to a folder
+        String uploadDir = "uploads/products/";
+        File dir = new File(uploadDir);
+        if (!dir.exists()) dir.mkdirs();
+
+        String fileName = System.currentTimeMillis() + "_" + imageFile.getOriginalFilename();
+        Path filePath = Paths.get(uploadDir + fileName);
+        Files.copy(imageFile.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+        // 3. Set the generated URL path to the product
+        product.setImageUrl("/uploads/products/" + fileName);
+
+        return ResponseEntity.ok(productService.saveProduct(product));
     }
 }

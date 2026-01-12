@@ -25,4 +25,10 @@ public class User {
 
     @Column(name = "reward_points", columnDefinition = "int default 0")
     private Integer rewardPoints = 0;
+    private String profileImage;
+    private String provider;
+
+    @Column(columnDefinition = "TEXT")
+    private String fcmToken;
+
 }

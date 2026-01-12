@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { User, ShoppingBag, MapPin, Trophy, History, Loader2, Gamepad2 } from 'lucide-react';
+import { 
+    User, ShoppingBag, MapPin, Trophy, History, 
+    Loader2, Gamepad2, RotateCcw, RefreshCw 
+} from 'lucide-react';
 import { motion } from 'framer-motion';
 import api from '../services/api';
 import { toast } from 'react-toastify';
@@ -13,20 +16,28 @@ const Profile: React.FC = () => {
     const [loading, setLoading] = useState(true);
 
     /**
-     * ✨ HARDENED PROFILE FETCH
-     * Uses the same validation logic as App.tsx to avoid 403 errors from "null" strings.
+     * ✨ handleRaiseReturn
+     * Logic to handle Return or Replacement requests.
+     * This can be passed down via context or used in child components.
      */
+    const handleRaiseReturn = async (orderId: string, type: 'RETURN' | 'REPLACEMENT') => {
+        const confirmMsg = `Are you sure you want to request a ${type.toLowerCase()} for order #${orderId}?`;
+        if (!window.confirm(confirmMsg)) return;
+
+        try {
+            await api.orderService.requestSupport(orderId, type);
+            toast.success(`${type} request submitted! Our team will review it shortly.`);
+            fetchLatestProfile(); // Refresh data to show new statuses
+        } catch (err: any) {
+            toast.error(err.response?.data || "Failed to submit request.");
+        }
+    };
+
     const fetchLatestProfile = useCallback(async () => {
         const token = localStorage.getItem('jwtToken');
-        
-        // 🛡️ Guard against invalid/ghost tokens
-        const isValidToken = token && 
-                            token !== "null" && 
-                            token !== "undefined" && 
-                            token.length > 20;
+        const isValidToken = token && token !== "null" && token !== "undefined" && token.length > 20;
 
         if (!isValidToken) {
-            console.warn("🛡️ Profile: Invalid token detected. Redirecting to login.");
             setLoading(false);
             navigate('/login', { replace: true });
             return;
@@ -36,18 +47,13 @@ const Profile: React.FC = () => {
             setLoading(true);
             const data = await api.userService.getProfile();
             setUserData(data);
-            
-            // Sync local storage with fresh DB data
             localStorage.setItem('user', JSON.stringify(data));
             window.dispatchEvent(new Event("storage"));
         } catch (err: any) {
-            console.error("❌ Profile Sync Error:", err);
-            
-            // Handle expired or rejected tokens
             if (err.response?.status === 403 || err.response?.status === 401) {
                 localStorage.removeItem('jwtToken');
                 localStorage.removeItem('user');
-                window.dispatchEvent(new Event("storage")); // Notify Header/App
+                window.dispatchEvent(new Event("storage"));
                 toast.error("Session expired. Please login again.");
                 navigate('/login', { replace: true });
             }
@@ -88,6 +94,7 @@ const Profile: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col lg:flex-row gap-8">
+                    {/* SIDEBAR NAVIGATION */}
                     <div className="lg:w-72 flex-shrink-0">
                         <div className="bg-white p-4 rounded-[2.5rem] shadow-sm border border-gray-100 sticky top-32">
                             <nav className="space-y-1">
@@ -111,6 +118,7 @@ const Profile: React.FC = () => {
                         </div>
                     </div>
 
+                    {/* MAIN CONTENT AREA */}
                     <div className="flex-1">
                         <motion.div 
                             key={location.pathname}
@@ -138,7 +146,9 @@ const Profile: React.FC = () => {
                                     </div>
                                 </div>
                             ) : (
-                                <Outlet /> 
+                                /* ✨ This will render the Orders component, 
+                                   where you should place the Return/Replacement buttons */
+                                <Outlet context={{ handleRaiseReturn }} /> 
                             )}
                         </motion.div>
                     </div>

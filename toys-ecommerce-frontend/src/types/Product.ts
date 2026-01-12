@@ -20,4 +20,7 @@ export interface Product {
     // Add this line to fix the error
     images?: ProductImage[]; 
     stockQuantity?: number;
+    discountPercent?: number;
+    discountPrice?: number;
+    originalPrice?: number;
 }

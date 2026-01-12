@@ -1,5 +1,5 @@
 import React from 'react';
-import type { categories, Category } from '../data/CategoriesData';
+import { categories, Category } from '../data/CategoriesData';
 import { X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 

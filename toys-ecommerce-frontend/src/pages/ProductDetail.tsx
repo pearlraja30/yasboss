@@ -4,15 +4,13 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { productService } from '../services/api';
 import { 
     ShoppingCart, Truck, ShieldCheck, Loader2, Info, Rotate3d, 
-    Search, RotateCcw, X, ShoppingBag, LogIn, Play, Eye, Box, Sparkles, Star 
+    Search, RotateCcw, X, ShoppingBag, LogIn, Play, Eye, Box, Sparkles, Star, Trophy, Zap 
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
-// ✨ IMPORTED COMPONENT: Using the dedicated file you created
 import AuthModal from '../components/AuthModal';
 
-// 🛠️ Environment Configuration
 const isProduction = false; 
 const config = {
     BASE_URL: isProduction ? "https://api.yourtoyhub.com" : "http://localhost:8080",
@@ -44,7 +42,9 @@ const ProductDetail: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [addingToCart, setAddingToCart] = useState(false);
     
-    // UI & View States
+    // ✨ NEW: Points State
+    const [userPoints, setUserPoints] = useState<number>(0);
+    
     const [activeMedia, setActiveMedia] = useState<{ url: string; type: 'image' | 'video' | '360' }>({ url: '', type: 'image' });
     const [images360, setImages360] = useState<string[]>([]);
     const [frameIndex, setFrameIndex] = useState(0); 
@@ -53,6 +53,13 @@ const ProductDetail: React.FC = () => {
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
     useEffect(() => {
+        // Fetch User Data for Genius Pricing
+        const userData = localStorage.getItem('user');
+        if (userData) {
+            const parsed = JSON.parse(userData);
+            setUserPoints(parsed.rewardPoints || 0);
+        }
+
         const loadProductData = async () => {
             if (!id) return;
             try {
@@ -60,7 +67,6 @@ const ProductDetail: React.FC = () => {
                 const data = await productService.getProductById(id);
                 setProduct(data);
                 
-                // ✨ Priority Media Loading: Default to 360 if available
                 const threeSixtySet = data.images
                     ?.filter((img: ProductImage) => img.is360View)
                     .map((img: ProductImage) => img.imageUrl.startsWith('http') ? img.imageUrl : `${config.BASE_URL}${img.imageUrl}`) || [];
@@ -84,6 +90,13 @@ const ProductDetail: React.FC = () => {
         };
         loadProductData();
     }, [id]);
+
+    // ✨ NEW: Genius Price Calculation
+    const pointsValue = userPoints * 0.1; // 10 points = 1 rupee
+    const maxGeniusDiscount = product ? product.price * 0.25 : 0;
+    const actualPointsDiscount = Math.min(pointsValue, maxGeniusDiscount);
+    const geniusPrice = product ? Math.round(product.price - actualPointsDiscount) : 0;
+    const pointsProgress = (actualPointsDiscount / maxGeniusDiscount) * 100;
 
     const handleRotation = (e: React.MouseEvent | React.TouchEvent) => {
         if (images360.length === 0) return;
@@ -151,7 +164,6 @@ const ProductDetail: React.FC = () => {
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-12">
-            {/* ✨ PLACED HERE: Component rendered at the top level of return */}
             <AuthModal 
                 isOpen={isAuthModalOpen} 
                 onClose={() => setIsAuthModalOpen(false)} 
@@ -255,14 +267,47 @@ const ProductDetail: React.FC = () => {
                         <h1 className="text-6xl font-black text-[#2D4A73] leading-[0.9] tracking-tighter">{product.name}</h1>
                     </div>
                     
-                    <div className="flex items-center gap-8 mb-12">
+                    {/* ✨ UPDATED PRICE SECTION WITH GENIUS UI */}
+                    <div className="flex flex-wrap items-center gap-8 mb-10">
                         <div className="flex flex-col">
                             <span className="text-gray-400 line-through font-bold text-lg">M.R.P.: ₹{Math.round(product.price * 1.5)}</span>
-                            <span className="text-7xl font-black text-gray-900 tracking-tighter">₹{product.price}</span>
+                            <span className="text-7xl font-black text-gray-900 tracking-tighter leading-none">₹{product.price}</span>
                         </div>
-                        <div className="bg-pink-50 border border-pink-100 p-4 rounded-[2rem] text-center">
-                            <span className="block text-pink-600 font-black text-2xl leading-none">33%</span>
-                            <span className="text-[10px] font-black text-pink-400 uppercase tracking-widest">Off Today</span>
+                        
+                        {/* 💎 GENIUS REWARDS CARD */}
+                        <div className="flex-1 min-w-[280px]">
+                            <div className="relative overflow-hidden bg-gradient-to-br from-[#2D4A73] to-[#1a2e4c] p-6 rounded-[2.5rem] text-white shadow-xl border border-white/10 group">
+                                <Sparkles className="absolute -right-2 -top-2 text-yellow-400 opacity-20 group-hover:scale-150 transition-transform duration-1000" size={80} />
+                                
+                                <div className="flex justify-between items-start relative z-10 mb-4">
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Trophy size={16} className="text-yellow-400" />
+                                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-200">Genius Member Price</span>
+                                        </div>
+                                        <div className="text-4xl font-black">₹{geniusPrice}</div>
+                                    </div>
+                                    <div className="bg-yellow-400 text-[#2D4A73] px-3 py-1 rounded-xl text-[10px] font-black flex items-center gap-1 shadow-lg">
+                                        <Star size={12} fill="currentColor"/> {userPoints} Pts
+                                    </div>
+                                </div>
+
+                                {/* Progress Bar */}
+                                <div className="relative h-2 bg-white/10 rounded-full overflow-hidden mb-3">
+                                    <motion.div 
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${pointsProgress}%` }}
+                                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-yellow-300 to-yellow-500"
+                                    />
+                                </div>
+                                
+                                <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-blue-200/60">
+                                    <span>{userPoints > 0 ? `Saved ₹${actualPointsDiscount.toFixed(0)} with points` : 'No points used'}</span>
+                                    <Link to="/quiz" className="flex items-center gap-1 text-yellow-400 hover:text-white transition-colors">
+                                        Play Quiz to save more <Zap size={10} fill="currentColor" />
+                                    </Link>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -293,7 +338,7 @@ const ProductDetail: React.FC = () => {
                 </div>
             </div>
 
-            {/* ✨ REFINED RECENTLY VIEWED */}
+            {/* Recently Viewed Section stays the same */}
             <div className="mt-32 border-t border-gray-100 pt-20">
                 <div className="flex items-center justify-between mb-12">
                     <h3 className="text-4xl font-black text-[#2D4A73] tracking-tighter uppercase italic flex items-center gap-4">

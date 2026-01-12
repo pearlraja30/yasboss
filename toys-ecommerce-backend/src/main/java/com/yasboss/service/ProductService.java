@@ -1,12 +1,20 @@
 package com.yasboss.service;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -32,7 +40,9 @@ public class ProductService {
     private ProductImageRepository imageRepository;
 
     @Autowired
-    private StorageService storageService; // ✨ Injected for physical file handling
+    private StorageService storageService;
+
+    private final String UPLOAD_DIR = "uploads/products/";
 
     // --- 🛒 TOY RETRIEVAL LOGIC ---
 
@@ -40,15 +50,22 @@ public class ProductService {
         return productRepository.findAll();
     }
 
+    /**
+     * ✨ Cache high-traffic homepage products.
+     * Cleared whenever any product is saved or deleted.
+     */
+    @Cacheable(value = "featuredProducts")
     public List<Product> getFeaturedProducts() {
+        log.info("Fetching featured products from DB...");
         return productRepository.findByIsFeaturedTrue();
     }
 
     /**
-     * ✨ Comprehensive Product Detail Fetch
-     * Maps brand, descriptions, and full gallery images to DTO.
+     * ✨ Comprehensive Product Detail Fetch (Cached)
      */
+    @Cacheable(value = "productDetails", key = "#id")
     public ProductDetailDTO getProductById(Long id) {
+        log.info("Cache miss for Product ID: {}. Fetching from DB...", id);
         Product product = productRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Toy with ID " + id + " not found"));
 
@@ -67,8 +84,8 @@ public class ProductService {
                 .map(img -> new ProductImageDTO(
                     img.getId(), 
                     img.getImageUrl(), 
-                    img.is360View(), // ✨ Entity flag for rotation
-                    img.isVideo()    // ✨ Entity flag for video rendering
+                    img.is360View(), 
+                    img.isVideo()    
                 ))
                 .collect(Collectors.toList());
             dto.setImages(imageDtos);
@@ -80,36 +97,9 @@ public class ProductService {
     // --- 📸 ADVANCED MEDIA HANDLING ---
 
     /**
-     * ✨ Bulk Upload for 360-degree interactive sequences.
-     * Physically saves frames and links them to the product in the DB.
+     * ✨ 360 Gallery Fetch (Cached)
      */
-    @Transactional
-    public List<ProductImage> save360Sequence(Long productId, MultipartFile[] files) throws IOException {
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
-
-        List<ProductImage> savedImages = new ArrayList<>();
-
-        for (MultipartFile file : files) {
-            // 1. Physically save the file using StorageService
-            String relativePath = storageService.saveFile(file, productId, true, false);
-
-            // 2. Create the metadata record in DB
-            ProductImage image = new ProductImage();
-            image.setImageUrl(relativePath);
-            image.set360View(true);
-            image.setVideo(false);
-            image.setProduct(product);
-
-            savedImages.add(imageRepository.save(image));
-        }
-        log.info("Successfully uploaded {} frames for 360° view of Product ID: {}", files.length, productId);
-        return savedImages;
-    }
-
-    /**
-     * Specialized query for fetching only 360-degree frames.
-     */
+    @Cacheable(value = "product360Gallery", key = "#productId")
     public List<ProductImageDTO> get360Gallery(Long productId) {
         return imageRepository.findByProductIdAndIs360ViewTrue(productId)
             .stream()
@@ -117,59 +107,92 @@ public class ProductService {
             .collect(Collectors.toList());
     }
 
+    @Transactional
+    @CacheEvict(value = {"productDetails", "product360Gallery"}, key = "#productId")
+    public List<ProductImage> save360Sequence(Long productId, MultipartFile[] files) throws IOException {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+
+        List<ProductImage> savedImages = new ArrayList<>();
+        for (MultipartFile file : files) {
+            String relativePath = storageService.saveFile(file, productId, true, false);
+            ProductImage image = new ProductImage();
+            image.setImageUrl(relativePath);
+            image.set360View(true);
+            image.setVideo(false);
+            image.setProduct(product);
+            savedImages.add(imageRepository.save(image));
+        }
+        return savedImages;
+    }
+
+    @Transactional
+    @CacheEvict(value = {"productDetails", "product360Gallery"}, key = "#productId")
+    public void delete360Sequence(Long productId) {
+        List<ProductImage> threeSixtyImages = imageRepository.findByProductIdAndIs360ViewTrue(productId);
+        if (threeSixtyImages.isEmpty()) return;
+
+        for (ProductImage image : threeSixtyImages) {
+            storageService.deletePhysicalFile(image.getImageUrl());
+        }
+        imageRepository.deleteAll(threeSixtyImages);
+    }
+
+    // --- 🛠️ CRUD & STOCK (With Cache Eviction) ---
+
+    /**
+     * ✨ Evicts the specific product detail and the general featured list
+     * to ensure the store shows updated prices/info.
+     */
+    @Caching(evict = {
+        @CacheEvict(value = "productDetails", key = "#product.id"),
+        @CacheEvict(value = "featuredProducts", allEntries = true)
+    })
+    public Product saveProduct(Product product) {
+        return productRepository.save(product);
+    }
+
+    
+    @Transactional
+    public void deleteProduct(Long productId) {
+        productRepository.findById(productId).ifPresent(product -> {
+            String imageUrl = product.getImageUrl();
+            
+            // 1. Delete the physical file if it exists
+            if (imageUrl != null && imageUrl.startsWith("/uploads/")) {
+                try {
+                    // Remove the leading slash to match local path (e.g., uploads/products/...)
+                    Path filePath = Paths.get(imageUrl.substring(1)); 
+                    Files.deleteIfExists(filePath);
+                } catch (IOException e) {
+                    // We log the error but continue to delete the DB record
+                    System.err.println("Could not delete file: " + e.getMessage());
+                }
+            }
+            
+            // 2. Delete the database record
+            productRepository.deleteById(productId);
+        });
+    }
+
     // --- 🔍 FILTERING & SEARCH ---
 
     public List<Product> getFilteredProducts(String category, String age, String search) {
-        String categoryParam = (category != null && !category.trim().isEmpty()) ? category : null;
-        String ageParam = (age != null && !age.trim().isEmpty()) ? age : null;
-        String searchParam = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
-
-        log.info("Executing query with Category: {}, Age: {}, Search: {}", categoryParam, ageParam, searchParam);
-        return productRepository.findFilteredProducts(categoryParam, ageParam, searchParam);    
+        // Search/Filter usually shouldn't be cached due to high variability
+        return productRepository.findFilteredProducts(category, age, search);    
     }
 
     public List<Product> getProductsByCategory(String category) {
         return productRepository.findByCategoryIgnoreCase(category);
     }
 
-    public List<Product> getProductsByNameFragment(String nameFragment) {
-        return productRepository.findByNameContainingIgnoreCase(nameFragment);
-    }
-
-    // --- 🛠️ BASIC CRUD ---
-
-    public Product saveProduct(Product product) {
-        return productRepository.save(product);
-    }
-
-    public void deleteProduct(Long id) {
-        productRepository.deleteById(id);
-    }
-
-    public Optional<Product> findById(Long id) {
-        return productRepository.findById(id); 
-    }
-
-    // --- 📦 STOCK MANAGEMENT ---
-
-    public long countByStockLessThan(int threshold) {
-        return productRepository.countByStockLessThan(threshold);
-    }
-
-    public List<Product> findByStockLessThan(int threshold) {
-        return productRepository.findByStockLessThan(threshold);
-    }
-
     @Transactional
+    @CacheEvict(value = "productDetails", key = "#productId")
     public ProductImage uploadSingleMedia(Long productId, MultipartFile file, boolean is360, boolean isVideo) throws IOException {
-        // 1. Validate Product exists
         Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
 
-        // 2. Physically save file via StorageService
         String relativePath = storageService.saveFile(file, productId, is360, isVideo);
-
-        // 3. Create and save metadata
         ProductImage media = new ProductImage();
         media.setImageUrl(relativePath);
         media.set360View(is360);
@@ -179,45 +202,70 @@ public class ProductService {
         return imageRepository.save(media);
     }
 
+    /**
+     * ✨ Note: This requires a bit of logic to find which product the image belongs to
+     * to evict the correct cache.
+     */
     @Transactional
     public void deleteProductMedia(Long imageId) {
-        // 1. Find the image metadata
         ProductImage image = imageRepository.findById(imageId)
-                .orElseThrow(() -> new ResourceNotFoundException("Media not found with id: " + imageId));
-
-        // 2. Delete the physical file first
+                .orElseThrow(() -> new ResourceNotFoundException("Media not found"));
+        
+        Long productId = image.getProduct().getId();
         storageService.deletePhysicalFile(image.getImageUrl());
-
-        // 3. Delete the database record
         imageRepository.delete(image);
         
-        log.info("Successfully removed media ID: {} and its physical file", imageId);
+        // Manual eviction if product ID is known
+        evictProductCache(productId);
     }
 
-    public List<Product> getFindByAgeRangeIgnoreCase(String ageRange) {
-        return productRepository.findByAgeRangeIgnoreCase(ageRange);
+    /**
+     * Helper to clear cache manually when complex relationships are deleted
+     */
+    @CacheEvict(value = {"productDetails", "product360Gallery"}, key = "#productId")
+    public void evictProductCache(Long productId) {
+        log.info("Manually evicting cache for Product ID: {}", productId);
     }
 
-    @Transactional
-    public void delete360Sequence(Long productId) {
-        // 1. Fetch all images flagged as 360View for this product
-        List<ProductImage> threeSixtyImages = imageRepository.findByProductIdAndIs360ViewTrue(productId);
+    @Cacheable(value = "productSearch", key = "#nameFragment")
+    public List<Product> getProductsByNameFragment(String nameFragment) {
+        if (nameFragment == null || nameFragment.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        log.info("Searching database for keyword: {}", nameFragment);
+        return productRepository.findByNameContainingIgnoreCase(nameFragment.trim());
+    }
 
-        if (threeSixtyImages.isEmpty()) {
-            log.warn("No 360° sequence found for Product ID: {}", productId);
-            return;
+    @CacheEvict(value = "productSearch", allEntries = true)
+    public void clearSearchCache() {
+        log.info("Clearing all cached search results.");
+    }
+
+    // --- REMAINDER OF UNCHANGED METHODS ---
+    public Optional<Product> findById(Long id) { return productRepository.findById(id); }
+    public long countByStockLessThan(int threshold) { return productRepository.countByStockLessThan(threshold); }
+    public List<Product> findByStockLessThan(int threshold) { return productRepository.findByStockLessThan(threshold); }
+    public List<Product> getFindByAgeRangeIgnoreCase(String ageRange) { return productRepository.findByAgeRangeIgnoreCase(ageRange); }
+
+    public Product saveProductWithImage(Product product, MultipartFile imageFile) throws IOException {
+        // 1. Create directory if it doesn't exist
+        Path uploadPath = Paths.get(UPLOAD_DIR);
+        if (!Files.exists(uploadPath)) {
+            Files.createDirectories(uploadPath);
         }
 
-        // 2. Physically delete each file from the hard drive
-        for (ProductImage image : threeSixtyImages) {
-            storageService.deletePhysicalFile(image.getImageUrl());
-        }
+        // 2. Generate unique filename to avoid conflicts
+        String fileName = UUID.randomUUID().toString() + "_" + imageFile.getOriginalFilename();
+        Path filePath = uploadPath.resolve(fileName);
 
-        // 3. Remove all metadata records from the database in bulk
-        imageRepository.deleteAll(threeSixtyImages);
+        // 3. Save file to the physical path
+        Files.copy(imageFile.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
 
-        log.info("Successfully deleted bulk 360° sequence ({} frames) for Product ID: {}", 
-                threeSixtyImages.size(), productId);
+        // 4. Store the relative URL in the database
+        // This is what React will use to load the image
+        product.setImageUrl("/uploads/products/" + fileName);
+
+        return productRepository.save(product);
     }
-
 }

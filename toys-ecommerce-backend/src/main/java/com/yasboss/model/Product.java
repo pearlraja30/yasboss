@@ -63,4 +63,11 @@ public class Product {
     @Column(name = "stock_quantity")
     private Integer stockQuantity;
     private Integer lowStockThreshold = 5;
+
+    private String hsn_code;
+
+    private Double originalPrice;
+
+    private Double discountPercent;
+
 }

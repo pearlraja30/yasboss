@@ -2,7 +2,8 @@ package com.yasboss.service;
 
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import org.openpdf.text.Document;
@@ -14,13 +15,14 @@ import org.openpdf.text.pdf.PdfWriter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import com.yasboss.dto.OrderRequest;
-import com.yasboss.model.CartItem;
+import com.yasboss.dto.OrderRequestDTO;
+import com.yasboss.model.GlobalSettings;
 import com.yasboss.model.Order;
 import com.yasboss.model.OrderItem;
 import com.yasboss.model.User;
 import com.yasboss.repository.OrderItemRepository;
 import com.yasboss.repository.OrderRepository;
+import com.yasboss.repository.SettingsRepository;
 import com.yasboss.repository.UserRepository;
 
 import jakarta.transaction.Transactional;
@@ -37,41 +39,60 @@ public class OrderService {
     @Autowired
     private UserRepository userRepo;
 
+    @Autowired
+    private CouponService couponService;
+
+    @Autowired
+    private UserService userService;
+
+    @Autowired
+    private SettingsRepository settingsRepository;
+
+    @Autowired
+    private EmailService emailService;
+
+    @Autowired
+    private NotificationService notificationService;
+
     @Transactional
-    public String placeOrder(OrderRequest req) {
-        String orderId = "YB-" + System.currentTimeMillis(); 
-        
+    public Order placeOrder(OrderRequestDTO request) {
         Order order = new Order();
-        order.setOrderId(orderId);
-        order.setUserEmail(req.getUserEmail());
-        order.setTotalAmount(req.getTotalAmount());
-        order.setShippingAddress(req.getShippingAddress());
-        order.setPaymentMethod(req.getPaymentMethod());
+        order.setOrderDate(LocalDateTime.now());
+        order.setShippingAddress(request.getShippingAddress());
+        order.setCustomerNotes(request.getCustomerNotes());
+        order.setUserEmail(request.getEmail());
         order.setStatus("PENDING");
-        
-        // Requirement #4: Reward Points Logic
-        int pointsToEarn = (int) Math.floor(req.getTotalAmount() / 100);
-        order.setPointsToEarn(pointsToEarn);
-        order.setPointsCredited(false);
 
-        userRepo.findByEmail(req.getUserEmail()).ifPresent(order::setUser);
-
-        Order savedOrder = orderRepo.save(order);
-
-        List<OrderItem> orderItems = new ArrayList<>();
-        for (CartItem item : req.getItems()) {
-            OrderItem oi = new OrderItem();
-            oi.setOrder(savedOrder); 
-            oi.setProductId(item.getId());
-            oi.setProductName(item.getName());
-            oi.setPrice(item.getPrice());       
-            oi.setQuantity(item.getQuantity());
-            oi.setImageUrl(item.getImageUrl()); 
-            orderItems.add(oi);
+        // 1. Calculate Base Subtotal from Database (Safety check)
+        double subtotal = 0;
+        for (var itemReq : request.getItems()) {
+            subtotal += (itemReq.getPrice() * itemReq.getQuantity());
         }
-        
-        itemRepo.saveAll(orderItems);
-        return orderId;
+
+        // 2. ✨ HANDLE COUPON LOGIC
+        double couponDiscount = 0;
+        if (request.getCouponCode() != null && !request.getCouponCode().isEmpty()) {
+            // Validate one last time server-side
+            couponDiscount = couponService.validateAndCalculateDiscount(
+                request.getCouponCode(), 
+                subtotal
+            );
+            
+            // Increment the used count in DB
+            couponService.incrementUsage(request.getCouponCode());
+            order.setAppliedCoupon(request.getCouponCode());
+        }
+
+        // 3. Handle Delivery Charges
+        double delivery = subtotal >= 500 ? 0 : 49;
+
+        // 4. Final Total Calculation
+        double finalAmount = (subtotal - couponDiscount) + delivery;
+        order.setTotalAmount(finalAmount);
+        order.setDiscountAmount(couponDiscount);
+
+        // 5. Save and Return
+        return orderRepo.save(order);
     }
 
     @Transactional
@@ -185,5 +206,184 @@ public class OrderService {
 
     public List<Order> getOrdersByEmail(String email) {
         return orderRepo.findByUserEmailOrderByCreatedAtDesc(email);
+    }
+
+    @Transactional
+    public Order requestSupport(String orderId, String type) {
+        Order order = orderRepo.findByOrderId(orderId)
+            .orElseThrow(() -> new RuntimeException("Order not found"));
+
+        if (!"DELIVERED".equals(order.getStatus())) {
+            throw new RuntimeException("Only delivered orders can be returned.");
+        }
+
+        if ("RETURN".equals(type)) {
+            order.setStatus("RETURN_REQUESTED");
+            order.setRefundStatus("PENDING");
+        } else {
+            order.setStatus("REPLACEMENT_REQUESTED");
+        }
+
+        return orderRepo.save(order);
+    }
+
+    @Transactional
+    public Order processSupportRequest(String orderId, String type) {
+        Order order = orderRepo.findByOrderId(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found: " + orderId));
+
+        // 🛡️ Security Check: Only allow requests for DELIVERED orders
+        if (!"DELIVERED".equalsIgnoreCase(order.getStatus())) {
+            throw new IllegalStateException("Requests can only be raised for delivered orders.");
+        }
+
+        if ("RETURN".equalsIgnoreCase(type)) {
+            order.setStatus("RETURN_REQUESTED");
+            order.setRefundStatus("PENDING"); // Automatically trigger refund flow
+        } else if ("REPLACEMENT".equalsIgnoreCase(type)) {
+            order.setStatus("REPLACEMENT_REQUESTED");
+        }
+
+        return orderRepo.save(order);
+    }
+
+    @Transactional
+    public Order cancelOrder(Long orderId, String email) {
+        Order order = orderRepo.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+
+        // 🛡️ Security Check: Ensure user owns the order
+        if (!order.getUserEmail().equals(email)) {
+            throw new RuntimeException("Unauthorized");
+        }
+
+        // 🚫 Business Rule: Cannot cancel if already dispatched
+        if (!"PENDING".equalsIgnoreCase(order.getStatus())) {
+            throw new IllegalStateException("Order cannot be cancelled once dispatched.");
+        }
+
+        order.setStatus("CANCELLED");
+        
+        // 🔄 Optional: Refund points if used
+        if (order.getPointsUsed() > 0) {
+            userService.refundPoints(email, order.getPointsUsed());
+        }
+
+        return orderRepo.save(order);
+    }
+
+    @Transactional
+    public Order requestReplacement(Long orderId, String email) {
+        // 1. Fetch Order and User
+        Order order = orderRepo.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+        
+        User user = userRepo.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // 🛡️ Security: Ensure user owns the order (or is Admin)
+        if (!order.getUserEmail().equals(email) && !user.getRole().equals("ADMIN")) {
+            throw new IllegalStateException("You are not authorized to modify this order.");
+        }
+
+        // 2. Fetch configurable window from DB
+        int windowDays = Integer.parseInt(
+            settingsRepository.findById("RETURN_WINDOW")
+                .map(GlobalSettings::getSettingValue)
+                .orElse("7")
+        );
+
+        // 🛠️ FIX: Convert java.util.Date to LocalDateTime
+        LocalDateTime orderDateTime = order.getCreatedAt().toInstant()
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime();
+
+        // 3. Calculate Days
+        long daysSinceCreation = ChronoUnit.DAYS.between(orderDateTime, LocalDateTime.now());
+        
+        // 4. Enforce window with Admin Override
+        if (daysSinceCreation > windowDays && !user.getRole().equals("ADMIN")) {
+            throw new IllegalStateException("The window for replacements has closed (" + windowDays + " days).");
+        }
+
+        // 5. Business Logic: Ensure order status is 'DELIVERED'
+        if (!order.getStatus().equals("DELIVERED") && !user.getRole().equals("ADMIN")) {
+            throw new IllegalStateException("Replacements can only be requested for delivered orders.");
+        }
+
+        // 6. Update and Save
+        order.setStatus("REPLACEMENT_REQUESTED");
+        return orderRepo.save(order);
+    }
+    public double calculateFinalTotal(double subtotal) {
+        // Fetch current tax from DB
+        double taxPercent = Double.parseDouble(
+            settingsRepository.findById("TAX_PERCENTAGE")
+                .map(s -> s.getSettingValue())
+                .orElse("18.0") // Default if not set
+        );
+
+        double taxAmount = (subtotal * taxPercent) / 100;
+        
+        // Check if subtotal qualifies for free shipping
+        double threshold = Double.parseDouble(
+            settingsRepository.findById("FREE_DELIVERY_THRESHOLD")
+                .map(s -> s.getSettingValue())
+                .orElse("500.0")
+        );
+        
+        double shipping = (subtotal >= threshold) ? 0.0 : 50.0; // ₹50 shipping if below threshold
+
+        return subtotal + taxAmount + shipping;
+    }
+
+
+    /**
+     * ✨ Update order to DELIVERED
+     */
+    @Transactional
+    public Order markAsDelivered(Long orderId) {
+        Order order = orderRepo.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+
+        order.setStatus("DELIVERED");
+        order.setDeliveredAt(LocalDateTime.now()); // Capture delivery time for Return Policy
+        
+        // If it was a COD order, mark payment as completed now
+        if ("COD".equals(order.getPaymentMethod())) {
+            order.setPaymentStatus("COMPLETED");
+        }
+
+        return orderRepo.save(order);
+    }
+
+    @Transactional
+    public void processPaymentSuccess(Long orderId) {
+        Order order = orderRepo.findById(orderId).orElseThrow();
+        
+        order.setPaymentStatus("COMPLETED");
+        order.setStatus("PAID");
+        orderRepo.save(order);
+
+        // 🚀 Automatically send the email
+        emailService.sendOrderConfirmationWithInvoice(order);
+    }
+
+    @Transactional
+    public Order markAsOutForDelivery(Long orderId) {
+        Order order = orderRepo.findById(orderId).orElseThrow();
+        order.setStatus("OUT_FOR_DELIVERY");
+
+        // 🚀 Trigger Push Notification
+        String userToken = order.getUser().getFcmToken(); // Assume you stored this
+        if (userToken != null) {
+            notificationService.sendPushNotification(
+                userToken, 
+                "Your Toy is Nearby! 🚚", 
+                "Order #" + order.getOrderId() + " is out for delivery. Get ready!"
+            );
+        }
+
+        return orderRepo.save(order);
     }
 }

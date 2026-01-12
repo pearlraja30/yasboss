@@ -1,33 +1,36 @@
 import React, { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { userService } from '../services/api';
 
-const OAuth2RedirectHandler: React.FC = () => {
+const OAuth2RedirectHandler = () => {
     const navigate = useNavigate();
     const location = useLocation();
 
     useEffect(() => {
-        // Extract the token from the URL query parameters
         const params = new URLSearchParams(location.search);
         const token = params.get('token');
 
         if (token) {
-            // 1. Save the JWT token to localStorage for future API calls
-            localStorage.setItem('token', token);
-            console.log("Authentication successful! Token saved.");
+            localStorage.setItem('jwtToken', token);
             
-            // 2. Redirect the user to the homepage or their account
-            navigate('/', { replace: true });
+            // Sync user profile immediately
+            userService.getProfile().then(user => {
+                localStorage.setItem('user', JSON.stringify(user));
+                localStorage.setItem('userEmail', user.email);
+                
+                window.dispatchEvent(new Event("user-login"));
+                window.dispatchEvent(new Event("storage"));
+                
+                navigate('/profile');
+            }).catch(() => navigate('/login'));
         } else {
-            // If no token is found, redirect to login with an error
-            console.error("Authentication failed: No token found in redirect URL.");
-            navigate('/login', { replace: true });
+            navigate('/login');
         }
-    }, [location, navigate]);
+    }, [navigate, location]);
 
     return (
-        <div className="flex flex-col items-center justify-center min-h-[60vh]">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-600 mb-4"></div>
-            <p className="text-xl font-medium text-gray-600">Completing login, please wait...</p>
+        <div className="min-h-screen flex items-center justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
         </div>
     );
 };

@@ -11,10 +11,13 @@ import org.springframework.stereotype.Service;
 import com.yasboss.model.User;
 import com.yasboss.repository.UserRepository;
 
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UserService implements UserDetailsService {
 
     private final UserRepository userRepository;
@@ -39,5 +42,20 @@ public class UserService implements UserDetailsService {
     public User getUserByEmail(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
+    }
+
+    // Inside UserService.java
+
+    @Transactional
+    public void refundPoints(String email, Integer pointsToRefund) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found: " + email));
+        
+        // Increment the existing points
+        Integer currentPoints = user.getRewardPoints() != null ? user.getRewardPoints() : 0;
+        user.setRewardPoints(currentPoints + pointsToRefund);
+        
+        userRepository.save(user);
+        log.info("Refunded {} points to user {}", pointsToRefund, email);
     }
 }

@@ -21,6 +21,8 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.yasboss.security.JwtAuthenticationFilter;
+import com.yasboss.security.oauth2.CustomOAuth2UserService;
+import com.yasboss.security.oauth2.OAuth2AuthenticationSuccessHandler;
 
 @Configuration
 @EnableWebSecurity
@@ -28,10 +30,17 @@ import com.yasboss.security.JwtAuthenticationFilter;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtFilter;
+    private final CustomOAuth2UserService customOAuth2UserService;
+    private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
 
-    // Use constructor injection for the filter
-    public SecurityConfig(JwtAuthenticationFilter jwtFilter) {
+    // Use constructor injection for all required components
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtFilter, 
+            CustomOAuth2UserService customOAuth2UserService,
+            OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler) {
         this.jwtFilter = jwtFilter;
+        this.customOAuth2UserService = customOAuth2UserService;
+        this.oAuth2AuthenticationSuccessHandler = oAuth2AuthenticationSuccessHandler;
     }
 
     @Bean
@@ -47,25 +56,23 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(csrf -> csrf.disable()) // Disabled for stateless JWT
-            .cors(Customizer.withDefaults()) // Uses the corsConfigurationSource bean below
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // Requirement: Stateless
+            .csrf(csrf -> csrf.disable()) 
+            .cors(Customizer.withDefaults()) 
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) 
             .authorizeHttpRequests(auth -> auth
                 // Public Endpoints
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/auth/**", "/oauth2/**", "/login/**").permitAll() // Added OAuth2 paths
                 .requestMatchers("/api/categories/**").permitAll()
-                 .requestMatchers("/api/products/filter/**").permitAll()
+                .requestMatchers("/api/products/filter/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
-
-                // This fixes the 403 errors on age-0-2.jpg, etc.
                 .requestMatchers("/uploads/**", "/images/**", "/static/**").permitAll()
                 .requestMatchers("/process-payment").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/announcements/active").permitAll() // Public ticker
+                .requestMatchers(HttpMethod.GET, "/api/announcements/active").permitAll()
+                .requestMatchers("/api/webhooks/shiprocket/**").permitAll()
 
-
-                 // Admin Endpoints
-                 .requestMatchers("/api/announcements/**").hasRole("ADMIN")
+                // Admin Endpoints
+                .requestMatchers("/api/announcements/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/products").hasRole("ADMIN")
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/products/**").hasRole("ADMIN")
@@ -78,17 +85,20 @@ public class SecurityConfig {
                 // Protected Endpoints
                 .requestMatchers("/api/quiz/**", "/api/rewards/**").authenticated()
                 .requestMatchers("/api/orders/**").authenticated()
-               // .requestMatchers("/api/orders/user/**").authenticated()
                 .requestMatchers("/api/users/profile/**").authenticated()
                 .requestMatchers("/api/cart/**").authenticated()
-                .requestMatchers("/api/rewards/**").authenticated()
-
-               
-               
                 .anyRequest().authenticated()
             )
             
-            // Add your custom JWT filter before the standard authentication filter
+            // --- ✨ OAUTH2 CONFIGURATION ---
+            .oauth2Login(oauth2 -> oauth2
+                .userInfoEndpoint(userInfo -> userInfo
+                    .userService(customOAuth2UserService) // Saves user to DB
+                )
+                .successHandler(oAuth2AuthenticationSuccessHandler) // Redirects to React with JWT
+            )
+            
+            // JWT filter
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
@@ -97,7 +107,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(Arrays.asList("http://localhost:5173")); // Allow Vite/React
+        config.setAllowedOrigins(Arrays.asList("http://localhost:5173")); 
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Cache-Control"));
         config.setAllowCredentials(true);

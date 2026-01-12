@@ -37,6 +37,17 @@ public class Order {
     @Column(columnDefinition = "TEXT")
     private String shippingAddress;
 
+    @Column(name = "gift_message", columnDefinition = "TEXT")
+    private String giftMessage;
+
+    @Column(name = "billing_address", columnDefinition = "TEXT")
+    private String billingAddress;
+
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean isGift = false;
+
+    private String refundStatus = "NONE";
+
     private String paymentMethod;
 
     private java.util.Date createdAt = new java.util.Date();
@@ -73,4 +84,33 @@ public class Order {
     
     // JSONB tracking history
     private String trackingStatusHistory;
+
+    private String appliedCoupon;
+    private Double discountAmount;
+
+    private String customerGstin; // GSTIN/UIN of Recipient
+    private String placeOfSupply; // e.g., "29-Karnataka"
+    private String invoiceNumber; // e.g., "MAA4-563"
+    private LocalDateTime invoiceDate;
+    
+    private Double taxableValue;
+    private Double igstAmount;
+    private Double cgstAmount;
+    private Double sgstAmount;
+    private Double totalInvoiceValue;
+    
+    private String invoiceType; // e.g., "Regular B2B"
+    private String ecommerceGstin; // 33AAICA3918J1C0
+
+    private String shiprocketOrderId; // ✨ Added for ShipRocket integration
+    private String trackingId;         // ✨ Added
+    private String trackingUrl;        // ✨ Added for ShipRocket
+    private String trackingStatus;     // ✨ Added
+    private Integer pointsUsed;
+
+    private LocalDateTime deliveredAt;
+
+    private String paymentStatus;
+
+
 }

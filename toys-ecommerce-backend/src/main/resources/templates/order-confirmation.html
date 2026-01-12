@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body style="font-family: Arial, sans-serif; color: #2D4A73;">
+    <div style="max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 20px;">
+        <h2 style="color: #FF1493;">Order Confirmed! 🧸</h2>
+        <p>Your magic is on its way. We have received your payment for order <strong>#[[${orderId}]]</strong>.</p>
+        
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+            <tr style="background: #F8F9FA;">
+                <th style="padding: 10px; text-align: left;">Total Paid</th>
+                <td style="padding: 10px; text-align: right; font-weight: bold;">₹[[${totalAmount}]]</td>
+            </tr>
+        </table>
+
+        <p>Please find your invoice attached as a PDF.</p>
+        <div style="text-align: center; margin-top: 30px;">
+            <a th:href="${trackingUrl}" 
+               style="background: #2D4A73; color: white; padding: 15px 25px; text-decoration: none; border-radius: 10px; font-weight: bold;">
+               Track My Toy 🚚
+            </a>
+        </div>
+    </div>
+</body>
+</html>

@@ -18,6 +18,7 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   color: #1a1a1a;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Hide scrollbar for gallery elements but keep functionality */

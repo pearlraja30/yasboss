@@ -1,5 +1,7 @@
 package com.yasboss.model;
 
+import java.time.LocalDateTime;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import jakarta.persistence.Column;
@@ -30,4 +32,16 @@ public class Announcement {
     private String targetLink; // The URL to navigate to when clicked
     @JsonProperty("active")
     private boolean active = true;
+
+    private LocalDateTime startTime;
+    private LocalDateTime endTime;
+    
+    // Logic to check if it should be displayed right now
+    public boolean isCurrentlyLive() {
+        LocalDateTime now = LocalDateTime.now();
+        if (!active) return false;
+        if (startTime != null && now.isBefore(startTime)) return false;
+        if (endTime != null && now.isAfter(endTime)) return false;
+        return true;
+    }
 }

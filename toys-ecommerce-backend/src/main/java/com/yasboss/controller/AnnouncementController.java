@@ -3,6 +3,8 @@ package com.yasboss.controller;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -29,24 +31,26 @@ public class AnnouncementController {
         return service.getActiveAnnouncements();
     }
 
-    // Admin Only: Used by AnnouncementManager
-    @GetMapping("/all")
-    public List<Announcement> getAll() {
-        return service.getAllAnnouncements();
-    }
-
     @PostMapping("/create")
     public Announcement create(@RequestBody Announcement announcement) {
         return service.create(announcement);
     }
 
     @PatchMapping("/{id}/status")
-    public Announcement updateStatus(@PathVariable Long id, @RequestParam boolean active) {
-        return service.toggleStatus(id, active);
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> updateStatus(@PathVariable Long id, @RequestParam boolean active) {
+        service.updateStatus(id, active);
+        return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/{id}")
     public void delete(@PathVariable Long id) {
         service.delete(id);
+    }
+
+    @GetMapping("/admin/all")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<Announcement> getAll() {
+        return service.getAllForAdmin();
     }
 }

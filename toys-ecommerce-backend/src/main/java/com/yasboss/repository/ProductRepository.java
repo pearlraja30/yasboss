@@ -32,9 +32,9 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     List<Product> findLowStockProducts();
 
    @Query("SELECT p FROM Product p WHERE " +
-           "(:category IS NULL OR p.category = :category) AND " +
-           "(:age IS NULL OR p.ageRange = :age) AND " +
-           "(:search IS NULL OR LOWER(CAST(p.name AS string)) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))")
+       "(:category IS NULL OR :category = '' OR p.category = :category) AND " +
+       "(:age IS NULL OR :age = '' OR p.ageRange = :age) AND " +
+       "(:search IS NULL OR :search = '' OR LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%')))")
     List<Product> findFilteredProducts(
         @Param("category") String category, 
         @Param("age") String age, 

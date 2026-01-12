@@ -21,6 +21,9 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addResourceHandler("/images/**")
                 .addResourceLocations(location)
                 .setCachePeriod(3600); // Optional: Cache images for 1 hour
+
+        registry.addResourceHandler("/uploads/**")
+                .addResourceLocations("file:uploads/");        
     }
 
     @Override

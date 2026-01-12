@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
+import api from './services/api';
+
+// 🔔 Firebase Imports
+// import { messaging } from './firebase-config'; 
+// import { getToken } from "firebase/messaging";
 
 // Layout & Global Components
 import Header from './components/Header';
@@ -51,13 +56,19 @@ import Payment from './components/Payment';
 import LogisticsSummary from './components/admin/LogisticsSummary';
 import LogisticsTracker from './components/LogisticsTracker';
 import TrackingPage from './pages/admin/TrackingPage';
+import ReportsPanel from './pages/admin/ReportsPanel';
+import AnnouncementManager from './pages/admin/AnnouncementManager';
+import OAuth2RedirectHandler from './pages/OAuth2RedirectHandler';
+import AdminSettings from './pages/admin/AdminSettings';
+import ShipmentAll from './pages/admin/ShipmentAll';
+import OrderTracking from './components/OrderTracking';
+import UserOrders from './pages/UserOrders';
 
-// 🛠️ REFINED CUSTOMER LAYOUT: Prevents content from sliding under the header
+// 🛠️ REFINED CUSTOMER LAYOUT
 const CustomerLayout = () => (
     <div className="flex flex-col min-h-screen">
         <DeliveryBanner />
         <Header />
-        {/* main container ensures vertical flow and proper spacing for child pages */}
         <main className="flex-grow bg-white">
             <Outlet />
         </main>
@@ -87,32 +98,59 @@ const App: React.FC = () => {
         return t;
     }, []);
 
+    const activeToken = validateToken(token);
+
+    /**
+     * ✨ FIREBASE PUSH NOTIFICATION LOGIC
+     */
+    const requestForToken = useCallback(async () => {
+        try {
+            if (!("Notification" in window)) return;
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                console.log("Notification permission granted.");
+                // Add your VAPID key and uncomment when firebase-config is ready
+                /*
+                const fcmToken = await getToken(messaging, { vapidKey: 'YOUR_VAPID_KEY' });
+                if (fcmToken) {
+                    await api.userService.updateFcmToken(fcmToken);
+                }
+                */
+            }
+        } catch (err) {
+            console.error("FCM Token Error:", err);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (activeToken) {
+            requestForToken();
+        }
+    }, [activeToken, requestForToken]);
+
     useEffect(() => {
         const syncAuth = () => {
             const currentToken = localStorage.getItem('jwtToken');
             setToken(validateToken(currentToken));
         };
-
         window.addEventListener('user-login', syncAuth);
         window.addEventListener('storage', syncAuth);
-        
         return () => {
             window.removeEventListener('user-login', syncAuth);
             window.removeEventListener('storage', syncAuth);
         };
     }, [validateToken]);
 
-    const activeToken = validateToken(token);
-    
     return (
         <CompareProvider>
             <Router>
-                {/* Global Wrapper: Ensures no horizontal overflow or hidden layers */}
                 <div className="min-h-screen bg-white">
                     <Routes>
                         <Route element={<CustomerLayout />}>
+                            {/* Public Routes */}
                             <Route path="/" element={<Home />} />
                             <Route path="/product/:id" element={<ProductDetail />} />
+                            <Route path="/products" element={<ProductListing />} />
                             <Route path="/products/category/:categoryRoute" element={<CategoryProducts />} />
                             <Route path="/products/collection/:collectionRoute" element={<CollectionProducts />} />
                             <Route path="/collection/:collectionRoute" element={<CollectionProducts />} />
@@ -122,26 +160,27 @@ const App: React.FC = () => {
                             <Route path="/about" element={<AboutUs />} />
                             <Route path="/help" element={<HelpCenter />} />
                             <Route path="/privacy" element={<Privacy />} />
-                            <Route path="/payment" element={<Payment />} />
-                            <Route path="/products" element={<ProductListing />} />
                             
-                            {/* Protected Routes */}
+                            {/* Protected Checkout & User Routes */}
                             <Route path="/cart" element={<ProtectedRoute token={activeToken}><Cart /></ProtectedRoute>} />
                             <Route path="/checkout" element={<ProtectedRoute token={activeToken}><Checkout /></ProtectedRoute>} />
+                            <Route path="/payment" element={<ProtectedRoute token={activeToken}><Payment /></ProtectedRoute>} />
                             <Route path="/order-success" element={<ProtectedRoute token={activeToken}><OrderSuccess /></ProtectedRoute>} />
-                            <Route path="/orders" element={<ProtectedRoute token={activeToken}><MyOrders /></ProtectedRoute>} />
                             <Route path="/wishlist" element={<ProtectedRoute token={activeToken}><Wishlist /></ProtectedRoute>} />
-
                             <Route path="/quiz" element={<ProtectedRoute token={activeToken}><QuizPage /></ProtectedRoute>} />
                             <Route path="/leaderboard" element={<ProtectedRoute token={activeToken}><Leaderboard /></ProtectedRoute>} />
-
+                            
+                            {/* Tracking & Unified Order Views */}
+                            <Route path="/track/:orderId" element={<ProtectedRoute token={activeToken}><OrderTracking /></ProtectedRoute>} />
+                            <Route path="/profile/orders" element={<ProtectedRoute token={activeToken}><UserOrders /></ProtectedRoute>} />
+                            
+                            {/* Nested Profile Routes */}
                             <Route path="/profile" element={<ProtectedRoute token={activeToken}><Profile /></ProtectedRoute>}>
                                 <Route index element={<OrderHistory />} /> 
                                 <Route path="orders" element={<OrderHistory />} />
                                 <Route path="details" element={<UserDetails />} />
                                 <Route path="rewards" element={<RewardTracker />} />
                                 <Route path="addresses" element={<SavedAddresses />} />
-                                <Route path="quiz" element={<QuizPage />} />
                                 <Route path="track/:id" element={<TrackingPage />} />
                             </Route>
                         </Route>
@@ -153,13 +192,17 @@ const App: React.FC = () => {
                                 <Route path="/admin/inventory" element={<Inventory />} />
                                 <Route path="/admin/add-product" element={<AddProduct />} />
                                 <Route path="/admin/logistics-summary" element={<LogisticsSummary />} />
-                                <Route path="/admin/shipments" element={<LogisticsTracker />} />
+                                <Route path="/admin/shipments" element={<ShipmentAll />} />
+                                <Route path="/admin/reports" element={<ReportsPanel />} />
+                                <Route path="/admin/announcements" element={<AnnouncementManager />} />
+                                <Route path="/admin/settings" element={<AdminSettings />} />
                             </Route>
                         </Route>
 
+                        {/* Auth Redirects */}
                         <Route path="/login" element={activeToken ? <Navigate to="/" replace /> : <Login />} />
                         <Route path="/admin/login" element={activeToken ? <Navigate to="/admin/orders" replace /> : <AdminLogin />} />
-
+                        <Route path="/oauth2/redirect" element={<OAuth2RedirectHandler />} />
                         <Route path="*" element={<NotFound />} />
                     </Routes>
 
