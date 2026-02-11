@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
     ShoppingCart, Star, Loader2, 
     Sparkles, PackageSearch, AlertCircle,
-    Eye // ✨ Added Eye icon
+    Eye 
 } from 'lucide-react';
 import api from '../services/api';
 import { toast } from 'react-toastify';
@@ -15,22 +15,31 @@ const ProductListing: React.FC = () => {
     const [products, setProducts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const category = searchParams.get('category');
-    const age = searchParams.get('age');
-    const searchQuery = searchParams.get('q');
+    // ✨ URL Parameter extraction
+    const category = searchParams.get('category') || '';
+    const age = searchParams.get('age') || '';
+    const searchQuery = searchParams.get('q') || '';
 
     const fetchProducts = async () => {
         try {
             setLoading(true);
-            const data = await api.productService.getProducts({
-                category: category || '',
-                age: age || '',
-                search: searchQuery || ''
-            });
-            setProducts(data);
+            
+            // ✨ FIX: Switched to getFilteredProducts to match backend Search endpoint
+            // Passing empty strings ensures the backend @RequestParam logic handles them as optional
+            const response = await api.productService.getFilteredProducts(
+                category,
+                age,
+                searchQuery
+            );
+            
+            // Handle both Axios response wrapper and direct data
+            const data = response.data || response;
+            setProducts(Array.isArray(data) ? data : []);
+            
         } catch (err) {
             console.error("Fetch Error:", err);
             toast.error("Unable to load the toy box right now.");
+            setProducts([]); // Clear state on error
         } finally {
             setLoading(false);
         }
@@ -38,6 +47,8 @@ const ProductListing: React.FC = () => {
 
     useEffect(() => {
         fetchProducts();
+        // Scroll to top when filters change
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }, [category, age, searchQuery]);
 
     const handleAddToCart = async (product: any) => {
@@ -96,7 +107,7 @@ const ProductListing: React.FC = () => {
     );
 
     return (
-        <div className="bg-[#F8F9FA] min-h-screen pt-32 pb-20 relative">
+        <div className="bg-[#F8F9FA] min-h-screen pt-32 pb-20 relative text-left">
             <div className="max-w-7xl mx-auto px-6">
                 
                 {products.length > 0 && (
@@ -110,15 +121,19 @@ const ProductListing: React.FC = () => {
                     </div>
                 )}
 
-                <AnimatePresence>
+                <AnimatePresence mode="wait">
                     {products.length === 0 ? (
                         <motion.div 
-                            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} 
+                            key="no-results"
+                            initial={{ opacity: 0, y: 20 }} 
+                            animate={{ opacity: 1, y: 0 }} 
+                            exit={{ opacity: 0, scale: 0.9 }}
                             className="bg-white rounded-[4rem] p-12 md:p-24 text-center shadow-xl border border-gray-100 flex flex-col items-center"
                         >
                             <PackageSearch size={64} className="text-[#2D4A73] mb-6" />
-                            <h2 className="text-4xl font-black text-[#2D4A73] mb-4">More Magic Coming Soon!</h2>
-                            <button onClick={() => navigate('/')} className="bg-[#2D4A73] text-white px-10 py-4 rounded-[2rem] font-black uppercase text-xs">Home</button>
+                            <h2 className="text-4xl font-black text-[#2D4A73] mb-4">No Magic Found</h2>
+                            <p className="text-gray-400 mb-8 uppercase tracking-widest text-xs font-bold">We couldn't find items matching "{category || age || searchQuery}"</p>
+                            <button onClick={() => navigate('/products')} className="bg-[#2D4A73] text-white px-10 py-4 rounded-[2rem] font-black uppercase text-xs">Clear Filters</button>
                         </motion.div>
                     ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -141,7 +156,6 @@ const ProductListing: React.FC = () => {
                                                 onError={(e) => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?q=80&w=500&auto=format&fit=crop'; }}
                                             />
                                             
-                                            {/* ✨ Quick Look Overlay using Eye Icon */}
                                             {!isOutOfStock && (
                                                 <div 
                                                     onClick={() => navigate(`/product/${product.id}`)}
@@ -177,7 +191,6 @@ const ProductListing: React.FC = () => {
                                                         <p className="text-[9px] font-black text-gray-400 uppercase">Price</p>
                                                         <p className={`text-2xl font-black ${isOutOfStock ? 'text-gray-400' : 'text-[#2D4A73]'}`}>₹{product.sellingPrice || product.price}</p>
                                                     </div>
-                                                    {/* ✨ View Details Mini Button */}
                                                     <button 
                                                         onClick={() => navigate(`/product/${product.id}`)}
                                                         className="text-[#2D4A73] p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -192,7 +205,6 @@ const ProductListing: React.FC = () => {
                                                         disabled={isOutOfStock}
                                                         onClick={() => handleAddToCart(product)}
                                                         className={`flex-1 p-4 rounded-2xl transition-all flex items-center justify-center ${isOutOfStock ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : 'bg-gray-100 text-[#2D4A73] hover:bg-[#2D4A73] hover:text-white active:scale-95'}`}
-                                                        title="Add to Cart"
                                                     >
                                                         <ShoppingCart size={20} />
                                                     </button>

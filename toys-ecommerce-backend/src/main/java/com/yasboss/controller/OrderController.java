@@ -10,10 +10,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping; // ✨ Import the new DTO
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.yasboss.dto.OrderRequestDTO;
 import com.yasboss.dto.PaymentRequest;
 import com.yasboss.model.Order;
+import com.yasboss.repository.CouponRepository;
 import com.yasboss.repository.OrderRepository;
 import com.yasboss.repository.UserRepository;
 import com.yasboss.service.OrderService;
@@ -41,21 +41,16 @@ public class OrderController {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private CouponRepository couponRepository;
+
     // --- 🛒 CUSTOMER ENDPOINTS ---
 
-    /**
-     * ✨ REFINED CHECKOUT ENDPOINT
-     * Uses OrderRequestDTO to capture coupons, points, and delivery notes.
-     */
     @PostMapping("/checkout")
     public ResponseEntity<?> createOrder(@RequestBody OrderRequestDTO orderRequest) {
-        // Extract identity from JWT for security
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        
         try {
-            log.info("Processing checkout for user: {} with Coupon: {}", email, orderRequest.getCouponCode());
-            
-            // Pass the DTO to the service layer for logic processing
+            log.info("Processing checkout for user: {}", email);
             Order savedOrder = orderService.placeOrder(orderRequest);
             return ResponseEntity.ok(savedOrder);
         } catch (Exception e) {
@@ -64,31 +59,37 @@ public class OrderController {
         }
     }
 
-    /**
-     * Get all orders for a specific user.
-     */
     @GetMapping("/user/{email:.+}")
     public ResponseEntity<List<Order>> getUserOrders(@PathVariable String email) {
-        log.info("Fetching orders for user: {}", email);
         List<Order> orders = orderService.getOrdersByEmail(email);
         return ResponseEntity.ok(orders);
     }
 
-    @GetMapping("/my-tracking")
-    public ResponseEntity<?> getMyTracking() {
+    @PostMapping("/{orderId}/request-replacement")
+    public ResponseEntity<?> requestReplacement(@PathVariable Long orderId) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        return userRepository.findByEmail(email)
-            .map(user -> {
-                if (user.getPhone() == null) {
-                    return ResponseEntity.badRequest().body("No mobile number linked to account.");
-                }
-                List<Order> orders = orderService.getOrdersByPhone(user.getPhone());
-                return ResponseEntity.ok(orders);
-            })
-            .orElse(ResponseEntity.status(404).body("User not found"));
+        try {
+            Order updatedOrder = orderService.requestReplacement(orderId, email);
+            return ResponseEntity.ok(updatedOrder);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Replacement request failed.");
+        }
     }
 
-    // --- 💳 PAYMENT & INSTANT PURCHASE ---
+    /**
+     * ✨ FIXED COUPON VALIDATION
+     * Harmonized types to prevent "incompatible bounds" error.
+     */
+    @GetMapping("/coupons/validate/{code}")
+    public ResponseEntity<?> validate(@PathVariable String code) {
+        return couponRepository.findByCode(code)
+            .filter(c -> !c.isExpired() && c.isActive())
+            .map(coupon -> ResponseEntity.ok((Object) coupon))
+            .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                                           .body("Invalid or Expired Coupon"));
+    }
 
     @PostMapping("/process-payment")
     public ResponseEntity<?> processPayment(@RequestBody PaymentRequest request) {
@@ -102,84 +103,12 @@ public class OrderController {
         order.setStatus("PAID");
         orderRepository.save(order);
 
-        // Loyalty Logic: Add points for the purchase
         userRepository.findByEmail(order.getUserEmail()).ifPresent(user -> {
             user.setRewardPoints(user.getRewardPoints() + (int)(order.getTotalAmount() / 100));
             userRepository.save(user);
         });
 
         return ResponseEntity.ok(Map.of("status", "SUCCESS"));
-    }
-
-    @PostMapping("/instant")
-    public ResponseEntity<?> processInstantOrder(
-            @RequestHeader("X-User-Email") String email,
-            @RequestBody Map<String, Object> orderData) {
-        
-        Order pendingOrder = orderService.createPendingOrder(
-            email, 
-            Long.valueOf(orderData.get("productId").toString()), 
-            (Integer) orderData.get("quantity")
-        );
-        return ResponseEntity.ok(pendingOrder);
-    }
-
-    // --- 🛠️ ADMIN & AGENT ENDPOINTS ---
-
-    @GetMapping("/all")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<Order>> getAllOrders() {
-        return ResponseEntity.ok(orderRepository.findAllByOrderByCreatedAtDesc());
-    }
-
-    @PutMapping("/{orderId}/status")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Order> updateStatus(
-        @PathVariable String orderId, 
-        @RequestParam String status,
-        @RequestParam(required = false) String agentName,
-        @RequestParam(required = false) String agentPhone
-    ) {
-        Order order = orderRepository.findByOrderId(orderId)
-            .orElseThrow(() -> new RuntimeException("Order not found: " + orderId));
-        
-        order.setStatus(status);
-        if (agentName != null) order.setDeliveryAgentName(agentName);
-        if (agentPhone != null) order.setDeliveryAgentPhone(agentPhone);
-        
-        return ResponseEntity.ok(orderRepository.save(order));
-    }
-
-    @PutMapping("/{orderId}/agent-update")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
-    public ResponseEntity<Order> agentStatusUpdate(
-        @PathVariable String orderId, 
-        @RequestParam String status,
-        @RequestParam(required = false) String deliveryNote
-    ) {
-        Order order = orderRepository.findByOrderId(orderId)
-            .orElseThrow(() -> new RuntimeException("Order not found: " + orderId));
-        
-        order.setStatus(status);
-        if (deliveryNote != null) {
-            order.setCustomerNotes(order.getCustomerNotes() + " | Agent: " + deliveryNote);
-        }
-        return ResponseEntity.ok(orderRepository.save(order));
-    }
-
-    @PostMapping("/{orderId}/support")
-    public ResponseEntity<?> requestOrderSupport(
-            @PathVariable String orderId,
-            @RequestParam String type) {
-        try {
-            Order updatedOrder = orderService.processSupportRequest(orderId, type);
-            return ResponseEntity.ok(updatedOrder);
-        } catch (IllegalStateException e) {
-            // Handle case where order isn't DELIVERED yet
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Request failed.");
-        }
     }
 
     @PostMapping("/{orderId}/cancel")
@@ -193,12 +122,53 @@ public class OrderController {
         }
     }
 
-    @PutMapping("/{id}/out-for-delivery")
-    public ResponseEntity<Order> outForDelivery(@PathVariable Long id) {
-        return ResponseEntity.ok(orderService.markAsOutForDelivery(id));
+    // --- 🛠️ ADMIN ENDPOINTS ---
+
+    @GetMapping("/all")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<Order>> getAllOrders() {
+        return ResponseEntity.ok(orderRepository.findAllByOrderByCreatedAtDesc());
+    }
+
+    @GetMapping("/admin/replacements/pending")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<Order>> getPendingReplacements() {
+        return ResponseEntity.ok(orderRepository.findByStatus("REPLACEMENT_REQUESTED"));
+    }
+
+    @PostMapping("/admin/{orderId}/replacement-action")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> handleReplacementAction(
+            @PathVariable Long orderId, 
+            @RequestParam String action) {
+        
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+
+        if ("APPROVE".equalsIgnoreCase(action)) {
+            order.setStatus("REPLACEMENT_APPROVED");
+        } else {
+            order.setStatus("REPLACEMENT_REJECTED");
+        }
+        
+        orderRepository.save(order);
+        return ResponseEntity.ok(Map.of("message", "Action " + action + " processed successfully."));
+    }
+
+    @PutMapping("/{orderId}/status")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Order> updateStatus(
+        @PathVariable String orderId, 
+        @RequestParam String status
+    ) {
+        Order order = orderRepository.findByOrderId(orderId)
+            .orElseThrow(() -> new RuntimeException("Order not found"));
+        order.setStatus(status);
+        return ResponseEntity.ok(orderRepository.save(order));
     }
 
     @PutMapping("/{id}/delivered")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Order> delivered(@PathVariable Long id) {
         return ResponseEntity.ok(orderService.markAsDelivered(id));
     }

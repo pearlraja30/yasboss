@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -117,6 +118,7 @@ public class UserController {
     }
 
     @GetMapping("/leaderboard")
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'CUSTOMER')")
     public List<Map<String, Object>> getLeaderboard() {
         return userRepository.findTop10ByOrderByRewardPointsDesc().stream().map(user -> {
             Map<String, Object> map = new HashMap<>();

@@ -3,10 +3,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-
 import { ToastContainer } from 'react-toastify';
 import api from './services/api';
 
-// 🔔 Firebase Imports
-// import { messaging } from './firebase-config'; 
-// import { getToken } from "firebase/messaging";
-
 // Layout & Global Components
 import Header from './components/Header';
 import Footer from './components/Footer';
@@ -41,7 +37,6 @@ import OrderSuccess from './pages/OrderSuccess';
 import MyOrders from './components/MyOrders';
 
 // Admin Pages
-import AdminRoute from './components/AdminRoute';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AddProduct from './pages/admin/AddProduct';
 import Inventory from './pages/admin/Inventory';
@@ -63,6 +58,13 @@ import AdminSettings from './pages/admin/AdminSettings';
 import ShipmentAll from './pages/admin/ShipmentAll';
 import OrderTracking from './components/OrderTracking';
 import UserOrders from './pages/UserOrders';
+import ParentingHub from './pages/ParentingHub';
+import AdminArticles from './pages/admin/AdminArticles';
+import ArticleDetail from './pages/parenting/ArticleDetail';
+import MilestoneTracker from './pages/parenting/MilestoneTracker';
+import ReplacementManager from './pages/admin/ReplacementManager';
+import CouponManager from './pages/admin/CouponManager';
+import CategoryManager from './pages/admin/CategoryManager';
 
 // 🛠️ REFINED CUSTOMER LAYOUT
 const CustomerLayout = () => (
@@ -76,10 +78,23 @@ const CustomerLayout = () => (
     </div>
 );
 
-// 🛡️ PROTECTED ROUTE GUARD
+// 🛡️ PROTECTED ROUTE GUARD (Customer)
 const ProtectedRoute = ({ token, children }: { token: string | null, children: React.ReactNode }) => {
     if (!token) return <Navigate to="/login" replace />;
     return <>{children}</>;
+};
+
+// 🛡️ ADMIN ROUTE GUARD (Strict Role Check)
+const StrictAdminRoute = () => {
+    const token = localStorage.getItem('jwtToken');
+    const role = localStorage.getItem('userRole');
+    const isAdmin = token && (role === 'ADMIN' || role === 'ROLE_ADMIN');
+
+    if (!isAdmin) {
+        console.warn("Unauthorized access attempt to Admin Panel.");
+        return <Navigate to="/login" replace />;
+    }
+    return <Outlet />;
 };
 
 const CompareContainer = () => {
@@ -90,6 +105,7 @@ const CompareContainer = () => {
 
 const App: React.FC = () => {
     const [token, setToken] = useState<string | null>(localStorage.getItem('jwtToken'));
+    const [role, setRole] = useState<string | null>(localStorage.getItem('userRole'));
 
     const validateToken = useCallback((t: string | null) => {
         if (!t || t === "null" || t === "undefined" || t.trim() === "" || t.length < 20) {
@@ -100,38 +116,12 @@ const App: React.FC = () => {
 
     const activeToken = validateToken(token);
 
-    /**
-     * ✨ FIREBASE PUSH NOTIFICATION LOGIC
-     */
-    const requestForToken = useCallback(async () => {
-        try {
-            if (!("Notification" in window)) return;
-            const permission = await Notification.requestPermission();
-            if (permission === 'granted') {
-                console.log("Notification permission granted.");
-                // Add your VAPID key and uncomment when firebase-config is ready
-                /*
-                const fcmToken = await getToken(messaging, { vapidKey: 'YOUR_VAPID_KEY' });
-                if (fcmToken) {
-                    await api.userService.updateFcmToken(fcmToken);
-                }
-                */
-            }
-        } catch (err) {
-            console.error("FCM Token Error:", err);
-        }
-    }, []);
-
-    useEffect(() => {
-        if (activeToken) {
-            requestForToken();
-        }
-    }, [activeToken, requestForToken]);
-
     useEffect(() => {
         const syncAuth = () => {
             const currentToken = localStorage.getItem('jwtToken');
+            const currentRole = localStorage.getItem('userRole');
             setToken(validateToken(currentToken));
+            setRole(currentRole);
         };
         window.addEventListener('user-login', syncAuth);
         window.addEventListener('storage', syncAuth);
@@ -139,6 +129,7 @@ const App: React.FC = () => {
             window.removeEventListener('user-login', syncAuth);
             window.removeEventListener('storage', syncAuth);
         };
+
     }, [validateToken]);
 
     return (
@@ -146,8 +137,8 @@ const App: React.FC = () => {
             <Router>
                 <div className="min-h-screen bg-white">
                     <Routes>
+                        {/* 🏠 CUSTOMER & PUBLIC FLOW */}
                         <Route element={<CustomerLayout />}>
-                            {/* Public Routes */}
                             <Route path="/" element={<Home />} />
                             <Route path="/product/:id" element={<ProductDetail />} />
                             <Route path="/products" element={<ProductListing />} />
@@ -160,8 +151,11 @@ const App: React.FC = () => {
                             <Route path="/about" element={<AboutUs />} />
                             <Route path="/help" element={<HelpCenter />} />
                             <Route path="/privacy" element={<Privacy />} />
-                            
-                            {/* Protected Checkout & User Routes */}
+                            <Route path="/parenting" element={<ParentingHub />} />
+                            <Route path="/parenting/article/:slug" element={<ArticleDetail />} />
+                            <Route path="/parenting/milestones" element={<MilestoneTracker />} />
+
+                            {/* Customer Protected */}
                             <Route path="/cart" element={<ProtectedRoute token={activeToken}><Cart /></ProtectedRoute>} />
                             <Route path="/checkout" element={<ProtectedRoute token={activeToken}><Checkout /></ProtectedRoute>} />
                             <Route path="/payment" element={<ProtectedRoute token={activeToken}><Payment /></ProtectedRoute>} />
@@ -169,12 +163,9 @@ const App: React.FC = () => {
                             <Route path="/wishlist" element={<ProtectedRoute token={activeToken}><Wishlist /></ProtectedRoute>} />
                             <Route path="/quiz" element={<ProtectedRoute token={activeToken}><QuizPage /></ProtectedRoute>} />
                             <Route path="/leaderboard" element={<ProtectedRoute token={activeToken}><Leaderboard /></ProtectedRoute>} />
-                            
-                            {/* Tracking & Unified Order Views */}
                             <Route path="/track/:orderId" element={<ProtectedRoute token={activeToken}><OrderTracking /></ProtectedRoute>} />
                             <Route path="/profile/orders" element={<ProtectedRoute token={activeToken}><UserOrders /></ProtectedRoute>} />
                             
-                            {/* Nested Profile Routes */}
                             <Route path="/profile" element={<ProtectedRoute token={activeToken}><Profile /></ProtectedRoute>}>
                                 <Route index element={<OrderHistory />} /> 
                                 <Route path="orders" element={<OrderHistory />} />
@@ -185,9 +176,10 @@ const App: React.FC = () => {
                             </Route>
                         </Route>
 
-                        {/* 🛡️ ADMIN ROUTES */}
-                        <Route element={<AdminRoute />}>
+                        {/* 🛡️ ADMIN COMMAND CENTER */}
+                        <Route element={<StrictAdminRoute />}>
                             <Route element={<AdminLayout />}>
+                                <Route path="/admin/dashboard" element={<AdminDashboard />} />
                                 <Route path="/admin/orders" element={<AdminDashboard />} />
                                 <Route path="/admin/inventory" element={<Inventory />} />
                                 <Route path="/admin/add-product" element={<AddProduct />} />
@@ -196,12 +188,16 @@ const App: React.FC = () => {
                                 <Route path="/admin/reports" element={<ReportsPanel />} />
                                 <Route path="/admin/announcements" element={<AnnouncementManager />} />
                                 <Route path="/admin/settings" element={<AdminSettings />} />
+                                <Route path="/admin/articles" element={<AdminArticles />} />
+                                <Route path="/admin/coupons" element={<CouponManager />} />
+                                <Route path="/admin/categories" element={<CategoryManager />} />
+                                <Route path="/admin/replacements" element={<ReplacementManager />} />
                             </Route>
                         </Route>
 
-                        {/* Auth Redirects */}
-                        <Route path="/login" element={activeToken ? <Navigate to="/" replace /> : <Login />} />
-                        <Route path="/admin/login" element={activeToken ? <Navigate to="/admin/orders" replace /> : <AdminLogin />} />
+                        {/* AUTHENTICATION GATEWAYS */}
+                        <Route path="/login" element={activeToken ? (role === 'ADMIN' ? <Navigate to="/admin/dashboard" /> : <Navigate to="/" />) : <Login />} />
+                        <Route path="/admin/login" element={activeToken && role === 'ADMIN' ? <Navigate to="/admin/dashboard" replace /> : <AdminLogin />} />
                         <Route path="/oauth2/redirect" element={<OAuth2RedirectHandler />} />
                         <Route path="*" element={<NotFound />} />
                     </Routes>

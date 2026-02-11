@@ -26,9 +26,13 @@ import com.yasboss.repository.SettingsRepository;
 import com.yasboss.repository.UserRepository;
 
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
+@Slf4j
 public class OrderService {
+
+    private final AuditService auditService;
     
     @Autowired
     private OrderRepository orderRepo;
@@ -53,6 +57,10 @@ public class OrderService {
 
     @Autowired
     private NotificationService notificationService;
+
+    OrderService(AuditService auditService) {
+        this.auditService = auditService;
+    }
 
     @Transactional
     public Order placeOrder(OrderRequestDTO request) {
@@ -281,8 +289,13 @@ public class OrderService {
         User user = userRepo.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        // ✨ FIX: Role Check Logic
+        // We check if the Set of roles contains an entry with the name "ROLE_ADMIN"
+        boolean isAdmin = user.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_ADMIN"));
+
         // 🛡️ Security: Ensure user owns the order (or is Admin)
-        if (!order.getUserEmail().equals(email) && !user.getRole().equals("ADMIN")) {
+        if (!order.getUserEmail().equals(email) && !isAdmin) {
             throw new IllegalStateException("You are not authorized to modify this order.");
         }
 
@@ -293,7 +306,7 @@ public class OrderService {
                 .orElse("7")
         );
 
-        // 🛠️ FIX: Convert java.util.Date to LocalDateTime
+        // 🛠️ Convert java.util.Date to LocalDateTime
         LocalDateTime orderDateTime = order.getCreatedAt().toInstant()
                 .atZone(ZoneId.systemDefault())
                 .toLocalDateTime();
@@ -301,18 +314,19 @@ public class OrderService {
         // 3. Calculate Days
         long daysSinceCreation = ChronoUnit.DAYS.between(orderDateTime, LocalDateTime.now());
         
-        // 4. Enforce window with Admin Override
-        if (daysSinceCreation > windowDays && !user.getRole().equals("ADMIN")) {
+        // 4. Enforce window with Admin Override (Using the isAdmin boolean)
+        if (daysSinceCreation > windowDays && !isAdmin) {
             throw new IllegalStateException("The window for replacements has closed (" + windowDays + " days).");
         }
 
         // 5. Business Logic: Ensure order status is 'DELIVERED'
-        if (!order.getStatus().equals("DELIVERED") && !user.getRole().equals("ADMIN")) {
+        if (!order.getStatus().equals("DELIVERED") && !isAdmin) {
             throw new IllegalStateException("Replacements can only be requested for delivered orders.");
         }
 
         // 6. Update and Save
         order.setStatus("REPLACEMENT_REQUESTED");
+        log.info("Replacement requested for Order ID: {} by User: {}", orderId, email);
         return orderRepo.save(order);
     }
     public double calculateFinalTotal(double subtotal) {
@@ -385,5 +399,41 @@ public class OrderService {
         }
 
         return orderRepo.save(order);
+    }
+
+   @Transactional
+    public Order completeOrderPayment(Long orderId) {
+        // 1. Fetch the order
+        Order order = orderRepo.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found with ID: " + orderId));
+
+        // 2. Existing Payment Logic: Update Status
+        log.info("Completing payment for Order ID: {}", orderId);
+        order.setStatus("PAID");
+
+        // 3. ✨ NEW: Increment coupon usage if a code was stored during checkout
+        // This now works because we added the field to the Order model above
+        if (order.getCouponCode() != null && !order.getCouponCode().isEmpty()) {
+            try {
+                couponService.incrementUsage(order.getCouponCode());
+            } catch (Exception e) {
+                // We log the error but don't crash the payment if coupon increment fails
+                log.error("Failed to increment coupon usage for code: {}", order.getCouponCode());
+            }
+        }
+
+        // 4. Optional: Loyalty points logic
+        userRepo.findByEmail(order.getUserEmail()).ifPresent(user -> {
+            int points = (int) (order.getTotalAmount() / 100);
+            user.setRewardPoints(user.getRewardPoints() + points);
+            userRepo.save(user);
+        });
+
+        return orderRepo.save(order);
+    }
+
+    public void updateStatus(Long orderId, String status, String adminEmail) {
+        // ... update logic
+        auditService.log("ORDER", "Order #" + orderId + " marked as " + status, adminEmail, "info");
     }
 }

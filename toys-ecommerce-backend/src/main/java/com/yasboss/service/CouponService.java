@@ -6,54 +6,45 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.yasboss.exception.ResourceNotFoundException;
 import com.yasboss.model.Coupon;
 import com.yasboss.repository.CouponRepository;
 
+import lombok.extern.slf4j.Slf4j;
+
 @Service
+@Slf4j
 public class CouponService {
 
     @Autowired
     private CouponRepository couponRepository;
 
     /**
-     * 🛒 Validate and Calculate Discount
-     * Used by the React frontend during checkout.
+     * ✨ FIX: Added createCoupon method
+     * This ensures your Controller finds the symbol it's looking for.
      */
-    public Double validateAndCalculateDiscount(String code, Double orderAmount) {
-        Coupon coupon = couponRepository.findValidCoupon(code.toUpperCase())
-            .orElseThrow(() -> new ResourceNotFoundException("Invalid, expired, or exhausted coupon code."));
-
-        // 1. Check Minimum Order Requirement
-        if (orderAmount < coupon.getMinOrderAmount()) {
-            throw new RuntimeException("Minimum order of ₹" + coupon.getMinOrderAmount() + " required for this code.");
-        }
-
-        // 2. Calculate Discount
-        double discount = 0.0;
-        if ("PERCENT".equalsIgnoreCase(coupon.getDiscountType())) {
-            discount = orderAmount * (coupon.getDiscountValue() / 100);
-        } else {
-            discount = coupon.getDiscountValue();
-        }
-
-        // Ensure discount doesn't exceed order amount
-        return Math.min(discount, orderAmount);
+    @Transactional
+    public Coupon createCoupon(Coupon coupon) {
+        // Normalization is handled by @PrePersist in the Model, 
+        // but we'll trim just to be safe.
+        coupon.setCode(coupon.getCode().toUpperCase().trim());
+        coupon.setUsedCount(0); 
+        return couponRepository.save(coupon);
     }
 
     /**
-     * ✅ Finalize Coupon Usage
-     * Called after a successful payment/order placement.
+     * 🛒 Validate and Calculate Discount
      */
-    @Transactional
-    public void incrementUsage(String code) {
-        couponRepository.findByCodeIgnoreCase(code).ifPresent(coupon -> {
-            coupon.setUsedCount(coupon.getUsedCount() + 1);
-            if (coupon.getUsageLimit() != null && coupon.getUsedCount() >= coupon.getUsageLimit()) {
-                coupon.setActive(false); // Auto-disable if limit reached
-            }
-            couponRepository.save(coupon);
-        });
+    public Double validateAndCalculateDiscount(String code, Double orderAmount) {
+        Coupon coupon = couponRepository.findByCode(code.toUpperCase().trim())
+            .filter(c -> c.isActive() && !c.isExpired() && !c.isLimitReached())
+            .orElseThrow(() -> new RuntimeException("Invalid, expired, or fully used coupon."));
+
+        if (orderAmount < coupon.getMinOrderValue()) {
+            throw new RuntimeException("Minimum order of ₹" + coupon.getMinOrderValue() + " required.");
+        }
+
+        double discount = orderAmount * (coupon.getDiscountPercent() / 100.0);
+        return Math.min(discount, orderAmount);
     }
 
     // --- Admin Management Methods ---
@@ -63,14 +54,40 @@ public class CouponService {
     }
 
     @Transactional
-    public Coupon createCoupon(Coupon coupon) {
-        coupon.setCode(coupon.getCode().toUpperCase());
-        coupon.setUsedCount(0);
-        return couponRepository.save(coupon);
+    public Coupon saveCoupon(Coupon coupon) {
+        return couponRepository.findByCode(coupon.getCode().toUpperCase().trim())
+            .map(existing -> {
+                existing.setDiscountPercent(coupon.getDiscountPercent());
+                existing.setMinOrderValue(coupon.getMinOrderValue());
+                existing.setExpiryDate(coupon.getExpiryDate());
+                existing.setActive(coupon.isActive());
+                existing.setUsageLimit(coupon.getUsageLimit());
+                return couponRepository.save(existing);
+            })
+            .orElseGet(() -> createCoupon(coupon));
     }
 
     @Transactional
     public void deleteCoupon(Long id) {
         couponRepository.deleteById(id);
+    }
+
+    // Inside CouponService.java
+
+    @Transactional
+    public void incrementUsage(String code) {
+        if (code == null || code.isEmpty()) return;
+
+        couponRepository.findByCode(code.toUpperCase().trim()).ifPresent(coupon -> {
+            coupon.setUsedCount(coupon.getUsedCount() + 1);
+            
+            // Check if we hit the limit
+            if (coupon.isLimitReached()) {
+                coupon.setActive(false);
+            }
+            
+            couponRepository.save(coupon);
+            log.info("Coupon {} usage incremented. Current count: {}", code, coupon.getUsedCount());
+        });
     }
 }

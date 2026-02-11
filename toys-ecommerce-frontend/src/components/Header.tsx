@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom'; // ✨ Added useLocation
 import { 
     Search, ShoppingCart, User, MapPin, X, Info, Heart, 
     HelpCircle, LogOut, Star, Sparkles, ChevronDown, 
@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'; 
 import { motion, AnimatePresence } from 'framer-motion';
 import CategoryMenu from './CategoryMenu';
+import ParentingNav from './ParentingNav'; // ✨ Import your ParentingNav component
 import { getCurrentCoordinates, getAddressFromCoords } from '../services/locationService';
 import { toast } from 'react-toastify';
 import api from '../services/api'; 
@@ -30,7 +31,7 @@ const Header: React.FC = () => {
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const [location, setLocation] = useState<string>('Check Location');
-    const [pincode, setPincode] = useState<string>(''); // ✨ New Pincode State
+    const [pincode, setPincode] = useState<string>(''); 
     const [isLocating, setIsLocating] = useState(false);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -40,8 +41,11 @@ const Header: React.FC = () => {
 
     const headerRef = useRef<HTMLDivElement>(null);
     const navigate = useNavigate();
+    const routeLocation = useLocation(); // ✨ Initialize useLocation
 
-    // --- ✨ MANUAL PINCODE HANDLER ---
+    // ✨ Check if the current route is part of the Parenting Hub
+    const isParentingSection = routeLocation.pathname.startsWith('/parenting');
+
     const handlePincodeSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (pincode.length !== 6) {
@@ -51,7 +55,6 @@ const Header: React.FC = () => {
         
         setIsLocating(true);
         try {
-            // Note: Ensure this service is implemented in your api.ts
             const data = await api.locationService.getAddressByPincode(pincode);
             const city = data.city || data.district || 'Unknown';
             setLocation(city);
@@ -140,7 +143,7 @@ const Header: React.FC = () => {
         localStorage.clear();
         window.dispatchEvent(new Event('storage'));
         toast.success("Logged out successfully");
-        navigate('/');
+        window.location.href = '/login';
     };
 
     const handleSearch = (e: React.FormEvent) => {
@@ -297,6 +300,11 @@ const Header: React.FC = () => {
 
                     <button onClick={() => setIsSearchOpen(true)} className="p-2.5 hover:bg-gray-50 rounded-xl text-gray-600 outline-none"><Search size={20} /></button>
                     
+                    {/* ✨ Link to the Hub */}
+                    <Link to="/parenting" className={`font-black text-[10px] uppercase tracking-widest transition-all ${isParentingSection ? 'text-pink-500' : 'text-gray-400 hover:text-pink-500'}`}>
+                        Yasboss Parenting
+                    </Link>
+
                     <Link to="/cart" className="p-2.5 hover:bg-blue-50 rounded-xl relative text-[#2D4A73] outline-none transition-all active:scale-95">
                         <ShoppingCart size={20} />
                         <span className="absolute top-1.5 right-1.5 bg-pink-600 text-white text-[8px] w-4 h-4 flex items-center justify-center rounded-full font-black border-2 border-white">3</span>
@@ -365,6 +373,20 @@ const Header: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* ✨ 3. CONDITIONAL PARENTING SUB-NAV ✨ */}
+            <AnimatePresence>
+                {isParentingSection && (
+                    <motion.div 
+                        initial={{ opacity: 0, height: 0 }} 
+                        animate={{ opacity: 1, height: 'auto' }} 
+                        exit={{ opacity: 0, height: 0 }}
+                        className="bg-white border-t border-gray-50 overflow-hidden"
+                    >
+                        <ParentingNav />
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* SEARCH PANEL */}
             <AnimatePresence>

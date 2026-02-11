@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { productService, userService } from '../services/api'; 
 import Banner from '../components/Banner';
 import AgeCategories from '../components/AgeCategories';
@@ -22,38 +22,62 @@ const Home: React.FC = () => {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
-    useEffect(() => {
-        const loadInitialData = async () => {
-            try {
-                setLoading(true);
-                const token = localStorage.getItem('jwtToken');
-                const hasToken = token && token !== "null" && token.length > 20;
-                setIsAuthenticated(!!hasToken);
+    // ✨ Updated loadInitialData with strict token checking and isolated error handling
+    const loadInitialData = useCallback(async () => {
+        try {
+            setLoading(true);
+            
+            // 1. Strict Token Validation
+            const token = localStorage.getItem('jwtToken');
+            const userRole = localStorage.getItem('userRole');
+            
+            // Only consider authenticated if token exists and isn't a "null" string
+            const hasValidToken = token && token !== "null" && token.length > 20;
+            setIsAuthenticated(!!hasValidToken);
 
-                const productData = await productService.getFeaturedProducts();
-                setProducts(productData);
-                
-                if (hasToken) {
-                    try {
-                        const leaderData = await userService.getLeaderboard();
-                        setLeaders(leaderData.slice(0, 3)); 
-                    } catch (e) { console.error(e); }
+            // 2. Fetch Featured Products (Public Data)
+            const productData = await productService.getFeaturedProducts();
+            setProducts(Array.isArray(productData) ? productData : []);
+            
+            // 3. Conditional Fetch for Leaderboard (Private Data)
+            if (hasValidToken) {
+                try {
+                    const leaderRes = await userService.getLeaderboard();
+                    // Extract data safely regardless of Axios wrapper
+                    const data = leaderRes.data || leaderRes;
+                    if (Array.isArray(data)) {
+                        setLeaders(data.slice(0, 3)); 
+                    }
+                } catch (e: any) { 
+                    // ✨ Log 403 but don't stop the page from loading
+                    console.warn("Leaderboard access restricted (403). Verify user roles.");
+                    setLeaders([]); 
                 }
-            } catch (err) {
-                console.error("Fetch error:", err);
-            } finally {
-                setLoading(false);
             }
-        };
-        loadInitialData();
+        } catch (err) {
+            console.error("Critical fetch error:", err);
+        } finally {
+            setLoading(false);
+        }
     }, []);
+
+    useEffect(() => {
+        loadInitialData();
+    }, [loadInitialData]);
+
+    if (loading) return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-white">
+            <Loader2 className="animate-spin text-[#2D4A73] mb-4" size={48} />
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Waking up the toys...</p>
+        </div>
+    );
 
     return (
         <div className="homepage bg-[#FDFDFD] text-[#1A1A1A] overflow-hidden">
             
-            {/* 1. CLEAN SPLIT HERO SECTION */}
+            {/* 1. HERO SECTION */}
             <section className="relative pt-32 pb-20 px-4 overflow-hidden">
-                <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
+                <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center text-left">
                     <motion.div 
                         initial={{ opacity: 0, x: -40 }} 
                         animate={{ opacity: 1, x: 0 }}
@@ -88,24 +112,17 @@ const Home: React.FC = () => {
                         transition={{ duration: 1, delay: 0.2 }}
                         className="relative"
                     >
-                        {/* Decorative Background Shape */}
                         <div className="absolute inset-0 bg-blue-50 rounded-[5rem] rotate-6 scale-105 -z-10" />
                         <Banner />
-                       {/* <img 
-                            src="/hero-toy.png" 
-                            alt="Hero" 
-                            className="w-full h-auto drop-shadow-[0_35px_35px_rgba(0,0,0,0.15)] hover:scale-105 transition-transform duration-700 pointer-events-none" 
-                        /> */}
                     </motion.div>
                 </div>
             </section>
 
-            {/* 2. AGE CATEGORIES (TIGHTER SPACING) */}
             <div className="max-w-7xl mx-auto px-4 py-12">
                 <AgeCategories />
             </div>
 
-            {/* 3. GAMIFIED LOYALTY CARD (CLEAN BENTO STYLE) */}
+            {/* 3. GAMIFIED LOYALTY CARD */}
             <section className="max-w-7xl mx-auto px-4 py-20">
                 <motion.div 
                     initial={{ opacity: 0, y: 30 }}
@@ -131,6 +148,7 @@ const Home: React.FC = () => {
                         </button>
                     </div>
 
+                    {/* ✨ Leaderboard only renders if access was granted */}
                     {isAuthenticated && leaders.length > 0 && (
                         <div className="bg-white/10 backdrop-blur-xl rounded-[3rem] p-10 border border-white/10 w-full max-w-sm relative z-10">
                             <h3 className="text-center font-black uppercase text-[10px] tracking-[0.3em] mb-8 flex items-center justify-center gap-2 text-blue-200">
@@ -141,9 +159,9 @@ const Home: React.FC = () => {
                                     <div key={index} className="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5">
                                         <div className="flex items-center gap-3">
                                             {index === 0 ? <Medal className="text-yellow-400" size={18} /> : <Star className="text-blue-300" size={18} />}
-                                            <span className="font-bold text-sm">{leader.name}</span>
+                                            <span className="font-bold text-sm">{leader.name || 'Anonymous'}</span>
                                         </div>
-                                        <span className="font-black text-pink-400 text-sm">{leader.points}</span>
+                                        <span className="font-black text-pink-400 text-sm">{leader.points || 0}</span>
                                     </div>
                                 ))}
                             </div>
@@ -154,8 +172,8 @@ const Home: React.FC = () => {
 
             <CategorySection />
 
-            {/* 4. FEATURED PRODUCTS (THE MAIN FEED) */}
-            <div className="container mx-auto px-4 py-24">
+            {/* 4. FEATURED PRODUCTS */}
+            <div className="container mx-auto px-4 py-24 text-left">
                 <div className="flex items-end justify-between mb-16 px-4">
                     <div>
                         <span className="text-pink-600 font-black text-[10px] uppercase tracking-[0.3em] mb-3 block">Top Picks</span>
@@ -169,28 +187,20 @@ const Home: React.FC = () => {
                     </button>
                 </div>
 
-                {loading ? (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-10">
-                        {[...Array(4)].map((_, i) => (
-                            <div key={i} className="aspect-[4/5] bg-gray-50 animate-pulse rounded-[3rem]"></div>
-                        ))}
-                    </div>
-                ) : (
-                    <motion.div 
-                        className="grid grid-cols-2 md:grid-cols-4 gap-10"
-                        variants={{ show: { transition: { staggerChildren: 0.1 } } }}
-                        initial="hidden"
-                        animate="show"
-                    >
-                        {products.map(product => (
-                            <ProductCard 
-                                key={product.id} 
-                                product={product} 
-                                onQuickView={(p) => setSelectedProduct(p)} 
-                            />
-                        ))}
-                    </motion.div>
-                )}
+                <motion.div 
+                    className="grid grid-cols-2 md:grid-cols-4 gap-10"
+                    variants={{ show: { transition: { staggerChildren: 0.1 } } }}
+                    initial="hidden"
+                    animate="show"
+                >
+                    {products.map(product => (
+                        <ProductCard 
+                            key={product.id} 
+                            product={product} 
+                            onQuickView={(p) => setSelectedProduct(p)} 
+                        />
+                    ))}
+                </motion.div>
             </div>
 
             <TrustSignals />
@@ -205,7 +215,7 @@ const Home: React.FC = () => {
                             initial={{ scale: 0.9, opacity: 0, y: 30 }} 
                             animate={{ scale: 1, opacity: 1, y: 0 }} 
                             exit={{ scale: 0.9, opacity: 0, y: 30 }} 
-                            className="bg-white w-full max-w-5xl rounded-[4rem] overflow-hidden shadow-2xl relative z-10 flex flex-col md:flex-row" 
+                            className="bg-white w-full max-w-5xl rounded-[4rem] overflow-hidden shadow-2xl relative z-10 flex flex-col md:flex-row text-left" 
                         >
                             <button onClick={() => setSelectedProduct(null)} className="absolute top-8 right-8 p-3 bg-gray-100 rounded-full hover:bg-gray-200 z-20 transition-all">
                                 <X size={20} />

@@ -112,5 +112,8 @@ public class Order {
 
     private String paymentStatus;
 
+    @Column(name = "coupon_code")
+    private String couponCode;
+
 
 }

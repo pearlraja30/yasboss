@@ -23,7 +23,6 @@ public class Product {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String name;
-    private String category;
     private Double mrpPrice;
     private Double sellingPrice;
     private Integer discountPct;
@@ -69,5 +68,12 @@ public class Product {
     private Double originalPrice;
 
     private Double discountPercent;
+
+    private String category; // Changed from Category to String for simplicity
+
+    /* 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "category_id")
+    private Category category; */
 
 }

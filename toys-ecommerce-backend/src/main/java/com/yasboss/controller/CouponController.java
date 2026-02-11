@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.yasboss.model.Coupon;
+import com.yasboss.repository.CouponRepository;
 import com.yasboss.service.CouponService;
 
 @RestController
@@ -23,6 +24,9 @@ public class CouponController {
 
     @Autowired
     private CouponService couponService;
+
+    @Autowired
+    private CouponRepository couponRepository;
 
     // --- 🛒 PUBLIC ENDPOINTS (Checkout) ---
 
@@ -68,5 +72,24 @@ public class CouponController {
     public ResponseEntity<Void> deleteCoupon(@PathVariable Long id) {
         couponService.deleteCoupon(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping
+    public ResponseEntity<Coupon> saveCoupon(@RequestBody Coupon coupon) {
+        // If coupon code exists, update it; otherwise, create new
+        return couponRepository.findByCode(coupon.getCode())
+            .map(existing -> {
+                existing.setDiscountPercent(coupon.getDiscountPercent());
+                existing.setExpiryDate(coupon.getExpiryDate());
+                existing.setMinOrderValue(coupon.getMinOrderValue());
+                return ResponseEntity.ok(couponRepository.save(existing));
+            })
+            .orElseGet(() -> ResponseEntity.ok(couponRepository.save(coupon)));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> delete(@PathVariable Long id) {
+        couponRepository.deleteById(id);
+        return ResponseEntity.ok().build();
     }
 }

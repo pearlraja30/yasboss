@@ -11,8 +11,9 @@ import com.yasboss.model.Order;
 
 public interface OrderRepository extends JpaRepository<Order, Long> {
     
-    // FIX: Changed from findByUserEmailOrderByDateDesc to findByUserEmailOrderByCreatedAtDesc
     List<Order> findByUserEmailOrderByCreatedAtDesc(String email);
+
+    List<Order> findByStatus(String status);
 
     // FIX: Changed from findAllByOrderByDateDesc to findAllByOrderByCreatedAtDesc
     List<Order> findAllByOrderByCreatedAtDesc();

@@ -33,6 +33,8 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class ProductService {
 
+    private final AuditService auditService;
+
     @Autowired
     private ProductRepository productRepository;
 
@@ -43,6 +45,10 @@ public class ProductService {
     private StorageService storageService;
 
     private final String UPLOAD_DIR = "uploads/products/";
+
+    ProductService(AuditService auditService) {
+        this.auditService = auditService;
+    }
 
     // --- 🛒 TOY RETRIEVAL LOGIC ---
 
@@ -178,6 +184,7 @@ public class ProductService {
     // --- 🔍 FILTERING & SEARCH ---
 
     public List<Product> getFilteredProducts(String category, String age, String search) {
+      log.info("Filtering with - Category: {}, Age: {}, Search: {}", category, age, search);
         // Search/Filter usually shouldn't be cached due to high variability
         return productRepository.findFilteredProducts(category, age, search);    
     }
@@ -267,5 +274,11 @@ public class ProductService {
         product.setImageUrl("/uploads/products/" + fileName);
 
         return productRepository.save(product);
+    }
+
+    public Product addProduct(Product product, String adminEmail) {
+        Product saved = productRepository.save(product);
+        auditService.log("INVENTORY", "New Asset Deployed: " + saved.getName(), adminEmail, "success");
+        return saved;
     }
 }

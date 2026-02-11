@@ -1,4 +1,3 @@
-// src/services/api.ts
 import axios from 'axios';
 import type { Product } from '../types/Product';
 import { toast } from 'react-toastify'; 
@@ -25,8 +24,8 @@ apiClient.interceptors.request.use((config) => {
     if (config.url?.includes('/auth/')) return config;
 
     const token = localStorage.getItem('jwtToken');
-    delete config.headers.Authorization;
-
+    
+    // Defensive check to avoid sending "null" strings to backend
     if (token && token !== "null" && token !== "undefined" && token.length > 20) {
         config.headers.Authorization = `Bearer ${token}`;
     }
@@ -35,30 +34,26 @@ apiClient.interceptors.request.use((config) => {
 }, (error) => Promise.reject(error));
 
 /**
- * REFINED RESPONSE INTERCEPTOR
+ * 4. Global Response Interceptor
  */
 apiClient.interceptors.response.use(
     (response) => response,
     (error) => {
-        const message = error.response?.data?.message || "An unexpected magic error occurred!";
         const status = error.response?.status;
 
         if (status === 401) {
             toast.warning("🔒 Session expired. Please sign in again.");
             localStorage.clear();
-            if (!window.location.pathname.includes('/login')) {
-                window.location.href = '/login';
-            }
-        } else {
-            toast.error(message);
+            window.location.href = '/login';     
+        } else if (status === 403) {
+            toast.error("🚫 Access Denied: Insufficient Permissions.");
         }
-
         return Promise.reject(error);
     }
 );
 
 /**
-* 4. Product Service Implementation
+* 5. Product Service Implementation
 */
 export const productService = {
     getAllProducts: async (): Promise<Product[]> => {
@@ -138,25 +133,34 @@ export const productService = {
         });
         return response.data;
     },
-};
+    getFilteredProducts: async (category: string, age: string, search: string) => {
+        // 🛡️ Logic to ensure we don't send empty strings if they aren't needed
+        const params: any = {};
+        if (category && category !== 'all') params.category = category;
+        if (age && age !== 'all') params.age = age;
+        if (search) params.search = search;
 
-/**
-* 5. Auth Service Implementation
-* ✨ Aligned with email/password structure to fix TS errors
-*/
-export const authService = {
-    login: async (credentials: { email: string; password: string }) => {
-        const response = await apiClient.post('/auth/login', credentials);
-        return response.data; 
-    },
-    register: async (formData: any) => {
-        const response = await apiClient.post('/auth/register', formData);
+        // This hits /api/products/search?age=0-2
+        const response = await apiClient.get('/products/search', { params });
+        console.log(response.data);
         return response.data;
     }
 };
 
 /**
-* 6. Cart Service Implementation
+* 6. Auth Service Implementation
+*/
+export const authService = {
+    login: async (credentials: { email: string; password: string }) => {
+        return await apiClient.post('/auth/login', credentials);
+    },
+    register: async (formData: any) => {
+        return await apiClient.post('/auth/register', formData);
+    }
+};
+
+/**
+* 7. Cart Service Implementation
 */
 export const cartService = {
     addToCart: async (productId: number, quantity: number, email: string) => {
@@ -165,19 +169,12 @@ export const cartService = {
             { headers: { 'X-User-Email': email } }
         );
     },
-
     calculateCartTotals: (items: any[], taxPercent: number, freeThreshold: number) => {
         const subtotal = items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
         const taxAmount = (subtotal * taxPercent) / 100;
         const shipping = subtotal >= freeThreshold ? 0 : 49;
         const grandTotal = subtotal + taxAmount + shipping;
-
-        return {
-            subtotal,
-            taxAmount,
-            shipping,
-            grandTotal
-        };
+        return { subtotal, taxAmount, shipping, grandTotal };
     },
     instantOrder: async (productId: number, quantity: number, email: string) => {
         return await apiClient.post(`/orders/instant`,
@@ -188,7 +185,7 @@ export const cartService = {
 };
 
 /**
-* 7. Order Service Implementation
+* 8. Order Service Implementation
 */
 export const orderService = {
     getUserOrders: async (email: string) => {
@@ -216,9 +213,7 @@ export const orderService = {
         return response.data;
     },
     downloadInvoice: async (id: number) => {
-        const response = await apiClient.get(`/admin/orders/${id}/invoice`, {
-            responseType: 'blob',
-        });
+        const response = await apiClient.get(`/admin/orders/${id}/invoice`, { responseType: 'blob' });
         return response.data;
     },
     createOrder: async (orderData: any) => {
@@ -230,27 +225,32 @@ export const orderService = {
         return response.data;
     },
     requestSupport: async (orderId: string, type: 'RETURN' | 'REPLACEMENT' | 'CANCEL') => {
-        const response = await apiClient.post(`/orders/${orderId}/support`, null, {
-            params: { type }
-        });
+        const response = await apiClient.post(`/orders/${orderId}/support`, null, { params: { type } });
         return response.data;
     },
     get: (url: string) => apiClient.get(url),
-
     getOrderById: async (orderId: string) => {
         const response = await apiClient.get(`/orders/${orderId}`);
         return response.data;
     },
-
-    // Optional: Add a specialized tracking endpoint if your backend supports it
     getTrackingDetails: async (orderId: string) => {
         const response = await apiClient.get(`/orders/track/${orderId}`);
         return response.data;
     },
+    requestReplacement: async (orderId: string, reason: string) => {
+        const response = await apiClient.post(`/orders/${orderId}/request-replacement`, { reason });
+        return response.data;
+    },
+    getPendingReplacements: async () => {
+        const response = await apiClient.get('/admin/replacements/pending');
+        return response.data;
+    },
+    handleReplacementAction: (id: number, action: string) => 
+        apiClient.post(`/admin/orders/${id}/replacement-action`, null, { params: { action } }),
 };
 
 /**
-* 8. Reward & Quiz Services
+* 9. Reward & Quiz Services
 */
 export const rewardService = {
     completeQuiz: async (quizData: { pointsEarned: number; quizId: string }) => {
@@ -287,7 +287,7 @@ export const quizService = {
 };
 
 /**
-* 9. Inventory & User Services
+* 10. Inventory & User Services
 */
 export const inventoryService = {
     getAll: () => apiClient.get('/products/all'),
@@ -341,44 +341,28 @@ export const userService = {
 };
 
 /**
- * ✨ 10. NEW: Location Service Implementation
+ * 11. Location, Admin, Agent Services
  */
 export const locationService = {
     getAddressByPincode: async (pincode: string) => {
         const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
         const data = await response.json();
-
         if (data[0].Status === "Success") {
-            const postOffice = data[0].PostOffice[0];
-            return {
-                city: postOffice.District,
-                state: postOffice.State,
-                district: postOffice.District,
-                locality: postOffice.Name
-            };
-        } else {
-            throw new Error("Invalid Pincode");
+            const po = data[0].PostOffice[0];
+            return { city: po.District, state: po.State, district: po.District, locality: po.Name };
         }
+        throw new Error("Invalid Pincode");
     }
 };
 
-/**
- * ✨ 11. ADMIN SERVICE
- * Updated to support Global Settings mapping
- */
 export const adminService = {
     getLowStock: (threshold: number) => apiClient.get(`/products/low-stock?threshold=${threshold}`),
     getAllOrders: () => apiClient.get('/orders/all'),
     updateOrderStatus: (id: string, status: string, agentName: string, agentPhone: string) => 
-        apiClient.put(`/orders/${id}/status`, null, {
-            params: { status, agentName, agentPhone }
-        }),
+        apiClient.put(`/orders/${id}/status`, null, { params: { status, agentName, agentPhone } }),
     deleteImageId: async (id: number) => apiClient.delete(`/gallery/${id}`),
     downloadReport: (type: string, start: string, end: string, format: string) => {
-        return apiClient.get('/admin/reports/download', {
-            params: { type, start, end, format },
-            responseType: 'blob',
-        });
+        return apiClient.get('/admin/reports/download', { params: { type, start, end, format }, responseType: 'blob' });
     },
     applyGlobalOffer: async (data: any) => {
         const response = await apiClient.post('/admin/offers/apply', data);
@@ -390,28 +374,28 @@ export const adminService = {
     },
     getGlobalSettings: async () => {
         const response = await apiClient.get('/admin/settings');
-        // Transforms [{settingKey: 'X', settingValue: 'Y'}] -> {X: 'Y'}
         const settingsMap: Record<string, string> = {};
         if (Array.isArray(response.data)) {
-            response.data.forEach((s: any) => {
-                settingsMap[s.settingKey] = s.settingValue;
-            });
+            response.data.forEach((s: any) => { settingsMap[s.settingKey] = s.settingValue; });
         }
         return settingsMap;
     },
     updateGlobalSetting: async (key: string, value: string) => {
         const response = await apiClient.put(`/admin/settings/${key}`, { settingValue: value });
         return response.data;
-    }
+    },
+
+    getRecentActivities: () => apiClient.get('/admin/audit-logs'),
 };
 
 export const agentService = {
     updateStatus: (orderId: string, status: string, note: string) => 
-        apiClient.put(`/orders/${orderId}/agent-update`, null, {
-            params: { status, deliveryNote: note }
-        })
+        apiClient.put(`/orders/${orderId}/agent-update`, null, { params: { status, deliveryNote: note } })
 };
 
+/**
+ * 12. Shipment, Announcement, Article Services
+ */
 export const shipmentService = {
     getCounts: async () => {
         const response = await apiClient.get('/admin/shipments/counts');
@@ -445,9 +429,7 @@ export const announcementService = {
         return response.data;
     },
     updateStatus: async (id: number, active: boolean) => {
-        const response = await apiClient.patch(`/announcements/${id}/status`, null, {
-            params: { active }
-        });
+        const response = await apiClient.patch(`/announcements/${id}/status`, null, { params: { active } });
         return response.data;
     },
     delete: async (id: number) => {
@@ -460,6 +442,78 @@ export const announcementService = {
     },
 };
 
+export const articleService = {
+    getFeatured: async () => {
+        const response = await apiClient.get('/parenting/articles/featured');
+        return response.data;
+    },
+    getByCategory: async (categorySlug: string) => {
+        const response = await apiClient.get(`/parenting/articles/category/${categorySlug}`);
+        return response.data;
+    },
+    createArticle: async (articleData: any) => {
+        const response = await apiClient.post('/parenting/articles', articleData);
+        return response.data;
+    },
+    deleteArticle: async (id: number) => { await apiClient.delete(`/parenting/articles/${id}`); },
+    getAgeGroups: async () => {
+        const response = await apiClient.get('/parenting/age-groups');
+        return response.data;
+    },
+    uploadImage: async (formData: FormData) => {
+        const response = await apiClient.post('/upload/article-image', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        return response.data;
+    },
+    getBySlug: async (slug: string) => {
+        const response = await apiClient.get(`/parenting/articles/slug/${slug}`);
+        return response.data;
+    }
+};
+
+/**
+ * 13. Milestone, Parenting, Coupon, Category Services
+ */
+export const milestoneService = {
+    getUserMilestones: async (userId: number) => {
+        const response = await apiClient.get(`/parenting/milestones/user/${userId}`);
+        return response.data;
+    },
+    addMilestone: async (milestoneData: any) => {
+        const response = await apiClient.post('/parenting/milestones', milestoneData);
+        return response.data;
+    },
+    deleteMilestone: async (id: number) => { await apiClient.delete(`/parenting/milestones/${id}`); }
+};
+
+export const parentingService = {
+    getBabyProfile: async (userId: number) => {
+        const response = await apiClient.get(`/parenting/profile/${userId}`);
+        return response.data;
+    },
+    saveBabyProfile: async (profileData: any) => {
+        const response = await apiClient.post('/parenting/profile', profileData);
+        return response.data;
+    },
+    getRecommendations: async (ageInMonths: number) => {
+        const response = await apiClient.get(`/parenting/recommendations/${ageInMonths}`);
+        return response.data;
+    }
+};
+
+export const couponService = {
+    getAllCoupons: () => apiClient.get('/admin/coupons'),
+    saveCoupon: (couponData: any) => apiClient.post('/admin/coupons', couponData),
+    deleteCoupon: (id: number) => apiClient.delete(`/admin/coupons/${id}`),
+    updateValidity: (id: number, expiryDate: string) => 
+        apiClient.put(`/admin/coupons/${id}/validity`, null, { params: { expiryDate } })
+};
+
+export const categoryService = {
+    getAllCategories: () => apiClient.get('/categories'),
+    saveCategory: (categoryData: any) => apiClient.post('/categories', categoryData),
+    deleteCategory: (id: number) => apiClient.delete(`/categories/${id}`)
+};
+
 /**
 * 🚀 Centralized API Export
 */
@@ -469,12 +523,7 @@ const api = {
     cartService, 
     orderService,
     rewardService,
-    couponService: {
-        validateCoupon: async (code: string, subtotal: number) => {
-            const response = await apiClient.get(`/coupons/validate?code=${code}&total=${subtotal}`);
-            return response.data;
-        }
-    },
+    couponService,
     quizService,
     inventoryService,
     userService,
@@ -482,7 +531,11 @@ const api = {
     agentService,
     shipmentService,
     announcementService,
-    locationService
+    locationService,
+    articleService,
+    milestoneService,
+    parentingService,
+    categoryService
 };
 
 export default api;

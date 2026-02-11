@@ -1,6 +1,7 @@
 package com.yasboss.service;
 
-import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -23,20 +24,35 @@ public class UserService implements UserDetailsService {
     private final UserRepository userRepository;
 
     @Override
+    @Transactional 
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
 
-        // ✨ CRITICAL: Convert the 'role' string (e.g., "ADMIN") to a GrantedAuthority
-        // hasRole("ADMIN") expects "ROLE_ADMIN" in the list
-        String roleWithPrefix = user.getRole().startsWith("ROLE_") ? 
-                                user.getRole() : "ROLE_" + user.getRole();
+        // ✨ Improved Role Mapping
+        List<SimpleGrantedAuthority> authorities = user.getRoles().stream()
+                .map(role -> {
+                    String roleName = role.getName().toUpperCase().trim(); // Force Uppercase
+                    if (!roleName.startsWith("ROLE_")) {
+                        roleName = "ROLE_" + roleName;
+                    }
+                    log.info("Assigning authority: {} to user: {}", roleName, email);
+                    return new SimpleGrantedAuthority(roleName);
+                })
+                .collect(Collectors.toList());
+
+        // ✨ Safe check for the Enabled field (Prevents the Boolean null crash)
+        boolean isEnabled = Boolean.TRUE.equals(user.getEnabled());
 
         return new org.springframework.security.core.userdetails.User(
-        user.getEmail(),
-        user.getPassword(),
-        Collections.singletonList(new SimpleGrantedAuthority(roleWithPrefix))
-    );
+            user.getEmail(),
+            user.getPassword(),
+            isEnabled, 
+            true, 
+            true, 
+            true, 
+            authorities
+        );
     }
 
     public User getUserByEmail(String email) {

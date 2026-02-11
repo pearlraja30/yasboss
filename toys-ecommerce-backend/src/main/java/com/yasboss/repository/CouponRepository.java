@@ -40,4 +40,6 @@ public interface CouponRepository extends JpaRepository<Coupon, Long> {
      * Finds all coupons that are past their expiry date.
      */
     List<Coupon> findByExpiryDateBefore(java.time.LocalDateTime now);
+
+    Optional<Coupon> findByCode(String code);
 }

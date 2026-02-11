@@ -33,7 +33,6 @@ public class SecurityConfig {
     private final CustomOAuth2UserService customOAuth2UserService;
     private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
 
-    // Use constructor injection for all required components
     public SecurityConfig(
             JwtAuthenticationFilter jwtFilter, 
             CustomOAuth2UserService customOAuth2UserService,
@@ -58,11 +57,13 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable()) 
             .cors(Customizer.withDefaults()) 
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) 
+            // Change to allow temporary sessions for OAuth2 handshake state, 
+            // but your JWT filter will still handle API statelessness.
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)) 
             .authorizeHttpRequests(auth -> auth
                 // Public Endpoints
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers("/api/auth/**", "/oauth2/**", "/login/**").permitAll() // Added OAuth2 paths
+                .requestMatchers("/api/auth/**", "/oauth2/**", "/login/**").permitAll() 
                 .requestMatchers("/api/categories/**").permitAll()
                 .requestMatchers("/api/products/filter/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
@@ -70,32 +71,40 @@ public class SecurityConfig {
                 .requestMatchers("/process-payment").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/announcements/active").permitAll()
                 .requestMatchers("/api/webhooks/shiprocket/**").permitAll()
+                
+                // Parenting Hub Public Routes
+                .requestMatchers(HttpMethod.GET, "/api/parenting/articles/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/parenting/age-groups").permitAll()
 
                 // Admin Endpoints
                 .requestMatchers("/api/announcements/**").hasRole("ADMIN")
+                .requestMatchers("/api/users/leaderboard").hasAnyRole("CUSTOMER", "ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/products").hasRole("ADMIN")
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/parenting/articles").hasRole("ADMIN") // POST/PUT articles
                 .requestMatchers("/api/products/**").hasRole("ADMIN")
-                .requestMatchers("/api/orders/user/**").hasAnyRole("CUSTOMER", "ADMIN")
+                .requestMatchers("/api/orders/user/**").hasAnyRole("CUSTOMER", "USER","ADMIN")
                 .requestMatchers("/api/orders/**").hasRole("ADMIN")
                 .requestMatchers("/api/orders/all").hasRole("ADMIN")
-                .requestMatchers("/api/users/leaderboard").hasAnyRole("CUSTOMER","ADMIN")
-                .requestMatchers("/api/products/add", "/api/products/update/**", "/api/products/delete/**").hasRole("ADMIN")
+                .requestMatchers("/api/users/leaderboard").hasAnyRole("USER","CUSTOMER","ADMIN")
                 
                 // Protected Endpoints
                 .requestMatchers("/api/quiz/**", "/api/rewards/**").authenticated()
-                .requestMatchers("/api/orders/**").authenticated()
+                .requestMatchers("/api/parenting/milestones/**").authenticated() // Protect Milestones
                 .requestMatchers("/api/users/profile/**").authenticated()
                 .requestMatchers("/api/cart/**").authenticated()
                 .anyRequest().authenticated()
             )
             
-            // --- ✨ OAUTH2 CONFIGURATION ---
+            // --- ✨ REFINED OAUTH2 CONFIGURATION ---
             .oauth2Login(oauth2 -> oauth2
                 .userInfoEndpoint(userInfo -> userInfo
-                    .userService(customOAuth2UserService) // Saves user to DB
+                    .userService(customOAuth2UserService) // ✨ Connects the User saving logic
                 )
-                .successHandler(oAuth2AuthenticationSuccessHandler) // Redirects to React with JWT
+                .successHandler(oAuth2AuthenticationSuccessHandler) 
+                .redirectionEndpoint(redirection -> redirection
+                    .baseUri("/login/oauth2/code/*")
+                )
             )
             
             // JWT filter
@@ -107,6 +116,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
+        // Ensure this matches your Vite/React port
         config.setAllowedOrigins(Arrays.asList("http://localhost:5173")); 
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Cache-Control"));

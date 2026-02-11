@@ -1,16 +1,17 @@
 package com.yasboss.security.oauth2;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import java.util.Optional;
+
+import org.springframework.beans.factory.annotation.Autowired; // Assuming you have a Role entity or Enum
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 
-import java.util.Map;
-import java.util.Optional;
-
+import com.yasboss.model.Role;
 import com.yasboss.model.User;
+import com.yasboss.repository.RoleRepository;
 import com.yasboss.repository.UserRepository;
 
 @Service
@@ -19,57 +20,44 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private RoleRepository roleRepository; // To fetch the CUSTOMER role
+
     @Override
-    public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
-        OAuth2User oAuth2User = super.loadUser(userRequest);
-        return processOAuth2User(userRequest, oAuth2User);
+    public OAuth2User loadUser(OAuth2UserRequest oAuth2UserRequest) throws OAuth2AuthenticationException {
+        OAuth2User oAuth2User = super.loadUser(oAuth2UserRequest);
+        return processOAuth2User(oAuth2UserRequest, oAuth2User);
     }
 
-    private OAuth2User processOAuth2User(OAuth2UserRequest userRequest, OAuth2User oAuth2User) {
-        String registrationId = userRequest.getClientRegistration().getRegistrationId();
-        Map<String, Object> attributes = oAuth2User.getAttributes();
-
-        String email = (String) attributes.get("email");
-        // Fallback for providers like Twitter/X or GitHub that might hide email
-        if (email == null) {
-            email = (String) attributes.get("login") + "@" + registrationId + ".com";
-        }
-
+    private OAuth2User processOAuth2User(OAuth2UserRequest oAuth2UserRequest, OAuth2User oAuth2User) {
+        String email = oAuth2User.getAttribute("email");
+        
         Optional<User> userOptional = userRepository.findByEmail(email);
         User user;
+        
         if (userOptional.isPresent()) {
             user = userOptional.get();
         } else {
-            user = new User();
-            user.setEmail(email);
-            user.setRole("CUSTOMER"); // Default role
-            user.setRewardPoints(100); // Welcome bonus
+            // ✨ New Social User Registration
+            user = registerNewSocialUser(oAuth2UserRequest, oAuth2User);
         }
 
-        // Standardize details from different providers
-        user.setFullName(extractName(attributes, registrationId));
-        user.setProfileImage(extractPicture(attributes, registrationId));
-        user.setProvider(registrationId); // To track if they are Google, FB, etc.
-
-        userRepository.save(user);
         return oAuth2User;
     }
 
-    private String extractName(Map<String, Object> attr, String id) {
-        if (id.equals("google") || id.equals("facebook")) return (String) attr.get("name");
-        if (id.equals("github")) return (String) attr.get("login");
-        if (id.equals("twitter")) return (String) attr.get("screen_name");
-        return "Explorer";
-    }
+   private User registerNewSocialUser(OAuth2UserRequest oAuth2UserRequest, OAuth2User oAuth2User) {
+        User user = new User();
+        user.setEmail(oAuth2User.getAttribute("email"));
+        user.setFullName(oAuth2User.getAttribute("name"));
+        user.setProvider(oAuth2UserRequest.getClientRegistration().getRegistrationId());
+        user.setEnabled(true);
 
-    private String extractPicture(Map<String, Object> attr, String id) {
-        if (id.equals("google")) return (String) attr.get("picture");
-        if (id.equals("facebook")) {
-            Map<String, Object> data = (Map<String, Object>) attr.get("picture");
-            Map<String, Object> urlData = (Map<String, Object>) data.get("data");
-            return (String) urlData.get("url");
-        }
-        if (id.equals("github")) return (String) attr.get("avatar_url");
-        return null;
+        // ✨ This matches the Set<Role> in your User model
+        Role customerRole = roleRepository.findByName("ROLE_CUSTOMER")
+                .orElseThrow(() -> new RuntimeException("Default Role ROLE_CUSTOMER not found in DB"));
+        
+        user.getRoles().add(customerRole); 
+
+        return userRepository.save(user);
     }
 }

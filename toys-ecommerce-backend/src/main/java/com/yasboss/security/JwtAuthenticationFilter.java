@@ -1,12 +1,13 @@
 package com.yasboss.security;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -23,9 +24,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Autowired 
     private JwtUtils jwtUtils;
-    
-    @Autowired 
-    private UserDetailsService userDetailsService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -45,31 +43,37 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                     // 4. Authenticate if not already authenticated in this request context
                     if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                        UserDetails userDetails = userDetailsService.loadUserByUsername(email);
                         
-                        // Log authorities for debugging (Verify ROLE_ prefixes here)
-                        log.debug("User {} authenticated with authorities: {}", email, userDetails.getAuthorities());
+                        // ✨ NEW: Extract Roles directly from the JWT claims 
+                        // This avoids an extra database hit via userDetailsService
+                        List<String> roles = jwtUtils.getRolesFromToken(token);
                         
+                        // Convert String roles (e.g., "ROLE_CUSTOMER") into Spring Authorities
+                        List<SimpleGrantedAuthority> authorities = roles.stream()
+                                .map(SimpleGrantedAuthority::new)
+                                .collect(Collectors.toList());
+
+                        log.debug("Authenticating user {} from JWT with roles: {}", email, roles);
+
+                        // 5. Create Authentication Token with extracted authorities
                         UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                                userDetails, 
+                                email, // Principal can be the email string in stateless JWT
                                 null, 
-                                userDetails.getAuthorities()
+                                authorities
                         );
                         
                         authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         
-                        // 5. Populate Security Context
+                        // 6. Populate Security Context
                         SecurityContextHolder.getContext().setAuthentication(authToken);
                     }
                 }
             } catch (Exception e) {
                 log.error("JWT Authentication Filter Error: {}", e.getMessage());
-                // We don't throw an exception here so that the filter chain can continue 
-                // and Spring Security can handle unauthorized access based on the config.
             }
         }
         
-        // 6. Continue the Filter Chain
+        // 7. Continue the Filter Chain
         filterChain.doFilter(request, response);
     }
 }
