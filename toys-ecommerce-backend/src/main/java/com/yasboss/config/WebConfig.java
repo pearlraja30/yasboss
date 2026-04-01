@@ -14,9 +14,9 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-      
-        
-       String location = "file:" + uploadRoot + (uploadRoot.endsWith("/") ? "" : "/");
+        // Normalize path to handle both Windows and Unix-style paths
+        String normalizedPath = uploadRoot.replace("\\", "/");
+        String location = "file:" + normalizedPath + (normalizedPath.endsWith("/") ? "" : "/");
 
         registry.addResourceHandler("/images/**")
                 .addResourceLocations(location)

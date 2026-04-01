@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/debug")
 public class DiagnosticController {
 
-    @Value("${file.upload-dir:C:/yasboss-uploads}")
+    @Value("${file.upload-dir}")
     private String uploadRoot;
 
     @GetMapping("/check-file")
